@@ -2,10 +2,25 @@
 // @name        adblock#.uc.js
 // @description Block Ads
 // @include     main
-// @include     chrome://browser/content/browser.xul
 // @author      nodaguti
-// @version     11/01/30 07:30 Bug 623435 - Rip out deprecated |RegExp.compile| builtin method
+// @license     MIT License
+// @compatibility Firefox 3.6 - Firefox 13
+// @version     12/05/28 21:00 Firefox 13対応
+// @note        [更新内容]
+//                 - Firefox 13対応
+//                 - filter: を廃止
+//                 - フィルタのデータをchromeフォルダ内のadblock#.jsonに保存するようにした
+//                 - アスタリスク/前方一致/後方一致フィルダで, 特に長いURIにおけるマッチ処理の高速化
+//                 - フィルタがマッチした時の処理を高速化
+//                 - エラーコンソールでマッチしたフィルタの内容が正しく表示されるようになった
+//                 - 正規表現フィルタのフラグを指定できるようにした
+//                 - アスタリスクフィルタを「+」なしで利用できるようにするオプションを有効にすると,
+//                   単純文字列フィルタもアスタリスクフィルタとして認識してしまうバグを修正
+//                 - 単純文字列の前方一致/後方一致フィルタがある場合にFilter Managerが正しく起動できないバグを修正
+//                 - 特定の文字列が含まれるフィルタを追加するとFilter Managerが正しく起動できなくなるバグを修正
+//                 - 正しく履歴が保存できないことがあるバグを修正
 // ==/UserScript==
+// @version     11/01/30 07:30 Bug 623435 - Rip out deprecated |RegExp.compile| builtin method
 // @version     11/01/28 22:00 結果が正しく保存されないことがあるバグを修正
 // @version     11/01/25 19:00 マッチ時の処理を少し高速化
 // @version     11/01/07 19:30 フィルターの最適化方法に誤りがあったのを修正
@@ -34,57 +49,77 @@
 // @version     09/08/29 06:00 単純文字列/アスタリスク使用フィルターに対応(正規表現/?/()を使ったものには未対応)
 
 
+(function(){
 
-var adblockSharp = {
+const Cc = Components.classes;
+const Ci = Components.interfaces;
+const Cu = Components.utils;
+const Cr = Components.results;
 
-	/* -------- config -------- */
+const pref = Cc["@mozilla.org/preferences-service;1"].
+					getService(Ci.nsIPrefService).getBranch('adblock#.');
 
-	//アスタリスクフィルタを,「+」なしで利用できるようにするか true/[false]
-	starfilterWithoutPlus: false,
+if(window.adblockSharp){
+	adblockSharp.destroy();
+	delete window.adblockSharp;
+}
 
-	//強制的に下のfilter:から読み込む true/[false]
-	forceLoadFromScript: false,
+window.adblockSharp = {
 
-	//ブロックするサイトのURL
-	// デフォルトで部分一致
-	// 正規表現を用いるには文字列を「/」で挟む
-	// アスタリスクを用いるには文字列を「+」で挟む
-	// ホワイトリストを用いるには始めに「@@」をつける
-	// 前方一致は先頭に, 後方一致は最後に「|」をつける (ただし,フィルタは単純文字列かアスタリスクしか使用できない)
-	// ()を用いる時は正規表現を用いること.
-	// 完全一致させたい場合は正規表現を用いること.
-	// 正規表現中の「\」は「\\」とエスケープしなければならない. (ただし, Filter Managerから追加する場合はエスケープの必要なし)
-	//
-	// 仕様については ReadMe.txt も参照のこと.
-	// Adblock系のフィルタを同梱のAdblock Adblock plus用リスト変換.htmlで一応変換可能
-	//
-	// 10/12/30版より, 原則として Global Storageを使うようになり, filter: からは読み込まないようになった.
-	// 詳しくは ReadMe.txt 参照.
-	//
-	//   [フィルタ例]
-	//     (単純文字列) http://hogehoge.com/
-	//     (アスタリスク) +http://hoge.*.com/+
-	//     (前方一致) |http://hogehoge.com/
-	//     (後方一致) example.swf|
-	//     (正規表現) /^http:\/\/www\.hogehoge\.com\/\d+/
-	//     (ホワイトリスト) @@htto://www.google.com/
+	//---- Note ----
+	
+	//12/05/28 21:00 版より設定はすべてFilter Managerより行うように変更されました.
 
-	filter: [
-//      以下のように「'」または「"」でフィルタを括り,最後に「,」を付加してフィルタを追加.
-//      'http://hogehoge.com/',
-	],
+	//本ファイル内のfilter: にフィルタを書く方法は, 12/05/28 21:00 版で廃止されました.
+	//フィルタはFilter Managerより追加してください.
+	//10/12/30 18:30より前のバージョンから移行する場合には, filter: の部分を同梱の adblock#.uc.js用リスト変換ツール.html によって
+	//変換した後, Filter Managerよりフィルタを追加して下さい.
+	//なお, 10/12/30 18:30以降のバージョンを使用していた場合は自動的にデータが引き継がれます.
 
-
-	// -------- configここまで --------
-	//   ここより下は編集しないで下さい
-	// -------------------------------
+	//--------
 
 
 	enabled: true,
+	
+	blackList: null,
+	
+	whiteList: null,
 
 	init: function(){
+		this._createToolMenu();
+		this.load();
+		this.observer.start();
+		
+		window.addEventListener('unload', this.uninit, false);
+	},
 
-		//メニュー作成
+	uninit: function(){
+		window.removeEventListener('unload', arguments.callee, false);
+		
+		adblockSharp.save();
+		adblockSharp.observer.stop();
+		adblockSharp.blackList.uninit();
+		adblockSharp.whiteList.uninit();
+	},
+	
+	destroy: function(){
+		window.removeEventListener('unload', adblockSharp.uninit, false);
+		
+		var toolMenu = document.getElementById("menu_ToolsPopup");
+		toolMenu.removeChild(document.getElementById('adblocksharp-tool-menu-enabled'));
+		toolMenu.removeChild(document.getElementById('adblocksharp-tool-menu-manager'));
+		
+		adblockSharp.save();
+		adblockSharp.blackList.uninit();
+		adblockSharp.whiteList.uninit();
+	},
+	
+	
+	/**
+	 * Tools内にadblock#.uc.jsのメニューを作成する
+	 * 起動時に一回だけ実行される
+	 */
+	_createToolMenu: function(){
 		var menuPopup = document.getElementById("menu_ToolsPopup");
 		var separator = document.getElementById("sanitizeSeparator");
 		var menuitem = document.createElement("menuitem");
@@ -99,23 +134,16 @@ var adblockSharp = {
 		menuitem2.setAttribute("label", "Organize adblock#.uc.js Filter...");
 		menuitem2.setAttribute("id", "adblocksharp-tool-menu-manager");
 		menuitem2.addEventListener("command", function(){
-			adblockSharp.filterManager.showManager();
+			adblockSharp.filterManager.launch();
 		}, false);
 		menuPopup.insertBefore(menuitem2, separator);
-
-
-		this.filterManager.init();
-		this.observer.start();
 	},
 
-	uninit: function(){
-		adblockSharp.filterManager.uninit();
-		adblockSharp.observer.stop();
-	},
-
+	/**
+	 * adblock#.uc.jsの有効/無効を切り替える
+	 */
 	toggleEnabled: function(){
-		var wm = Components.classes["@mozilla.org/appshell/window-mediator;1"]
-							.getService(Components.interfaces.nsIWindowMediator);
+		var wm = Cc["@mozilla.org/appshell/window-mediator;1"].getService(Ci.nsIWindowMediator);
 		var enumerator = wm.getEnumerator('navigator:browser');
 
 		while(enumerator.hasMoreElements()){
@@ -131,663 +159,1544 @@ var adblockSharp = {
 	},
 
 
-	debug: function(mes){
-		if(!this._console){
-			this._console = Components.classes["@mozilla.org/consoleservice;1"]
-                                 .getService(Components.interfaces.nsIConsoleService);
+	load: function(){
+		var file = Cc["@mozilla.org/file/directory_service;1"].getService(Ci.nsIProperties)
+					.get("UChrm", Ci.nsILocalFile);
+		file.appendRelativePath('adblock#.json');
+		
+		if(file.exists()){
+			this._loadFromFile(file);
+		}else{
+			log('adblock#.json is not found in your chrome folder. We will load data from Global Storage.');
+			this._loadFromStorage();
 		}
-
-		this._console.logStringMessage("[Adblock#] " + mes);
+		
+	},
+	
+	_loadFromFile: function(file){
+		var fstream = Cc["@mozilla.org/network/file-input-stream;1"].createInstance(Ci.nsIFileInputStream);
+		var sstream = Cc["@mozilla.org/scriptableinputstream;1"].createInstance(Ci.nsIScriptableInputStream);
+		fstream.init(file, -1, 0, 0);
+		sstream.init(fstream);
+		
+		var data = sstream.read(sstream.available());
+		
+		try{
+			data = decodeURIComponent(escape(data));
+		}catch(e){}
+		
+		sstream.close();
+		fstream.close();
+		
+		data = JSON.parse(data);
+		
+		['blackList', 'whiteList'].forEach(function(listType){
+		
+			if(this[listType]){
+				this[listType].uninit();
+				this[listType] = null;
+			}
+			
+			this[listType] = new filterList();
+			
+			for(let type in data[listType]){
+				if(type == 'history') continue;
+				
+				var typeObj = this[listType]._getTypeObjByName(type);
+				
+				//文字列で保存されているフィルタデータをフィルタオブジェクトにする
+				var _list = data[listType][type].list.map(function(filter){ return typeObj.format(filter); });
+				
+				typeObj.list = _list.concat();
+			}
+			
+			this[listType].history = null;
+			this[listType].history = data[listType].history;
+		
+		}, this);
+	},
+	
+	//もうメンテしないのですごく汚いけど気にしない
+	_loadFromStorage: function(){
+		
+		//Global Storageが存在しない場合は初期化して終了
+		if(!window.globalStorage){
+			log('window.globalStorage is not supported (maybe you are using Firefox 13 or later).');
+			
+			if(this.blackList){ this.blackList.uninit(); this.blackList = null; }
+			if(this.whiteList){ this.whiteList.uninit(); this.whiteList = null; }
+			
+			this.blackList = new filterList();
+			this.whiteList = new filterList();
+		
+			return;
+		}
+		
+		var storage = {
+			filter: window.globalStorage['adblockSharp.filter'],
+			result: window.globalStorage['adblockSharp.result']
+		};
+		
+		if(this.blackList){ this.blackList.uninit(); this.blackList = null; }
+		if(this.whiteList){ this.whiteList.uninit(); this.whiteList = null; }
+			
+		this.blackList = new filterList();
+		this.whiteList = new filterList();
+		
+		['blackList', 'whiteList'].forEach(function(listType){
+			if(!storage.filter || !storage.filter.getItem(listType)) return;
+		
+			var listObj = JSON.parse(storage.filter.getItem(listType).value);
+			
+			for(var type in listObj){
+				
+				listObj[type].forEach(function(filter){
+				
+					switch(type){
+					
+						case 'plainTextFilter':
+						case 'starFilter':
+						
+							var typeObj = this[listType]._getTypeObjByName(type.replace('Filter', ''));
+							typeObj.list.push(filter);
+							
+							this[listType].history[typeObj.toString(filter)] = JSON.parse(storage.result.getItem(filter));
+							break;
+					
+						case 'prefixSuffixFilter':
+							
+							var typeObj = (filter[0] <= 2) ? 
+								this[listType]._getTypeObjByName('prefix') : 
+								this[listType]._getTypeObjByName('suffix');
+								
+							typeObj.list.push(filter[1]);
+							
+							this[listType].history[typeObj.toString(filter[1])] = JSON.parse(storage.result.getItem(filter[1]));
+							break;
+							
+						case 'regExpFilter':
+							var typeObj = this[listType]._getTypeObjByName(type.replace('Filter', ''));
+							
+							typeObj.list.push(new RegExp(filter.slice(1, filter.length-1)));
+							
+							this[listType].history[filter] = JSON.parse(storage.result.getItem(String(filter)));
+							break;
+							
+					}
+				}, this);
+			}
+			
+			//history fix (time -> count)
+			for(let key in this[listType].history){
+				try{
+					this[listType].history[key].count = this[listType].history[key].time || 0;
+					delete this[listType].history[key].time;
+				}catch(ex){}
+			}
+		}, this);
+		
+	},
+	
+	
+	save: function(){
+		
+		//保存データの作成
+		var data = {
+			blackList: {},
+			whiteList: {},
+		};
+		
+		['blackList', 'whiteList'].forEach(function(listType){
+		
+			if(!this[listType]) return log(listType, 'is empty.');
+			
+			this[listType].types.forEach(function(typeObj){
+			
+				//フィルタを文字列化する
+				var _list = typeObj.list.map(function(filter){ return typeObj.toString(filter); });
+			
+				data[listType][typeObj.name] = {
+					list: _list
+				};
+				
+			});
+			
+			data[listType].history = this[listType].history;
+			
+		}, this);
+		
+		//encode
+		data = JSON.stringify(data);
+		
+		//save to file
+		var file = Cc["@mozilla.org/file/directory_service;1"].getService(Ci.nsIProperties)
+					.get("UChrm", Ci.nsILocalFile);
+		file.appendRelativePath('adblock#.json');
+		
+		var suConverter = Cc["@mozilla.org/intl/scriptableunicodeconverter"].createInstance(Ci.nsIScriptableUnicodeConverter);
+		suConverter.charset = 'UTF-8';
+		data = suConverter.ConvertFromUnicode(data);
+		
+		var foStream = Cc['@mozilla.org/network/file-output-stream;1'].createInstance(Ci.nsIFileOutputStream);
+		foStream.init(file, 0x02 | 0x08 | 0x20, 0664, 0);
+		foStream.write(data, data.length);
+		foStream.close();
 	}
 };
 
 
-adblockSharp.filterManager = {
+var filterList = function(){
+	this.init();
+}
 
+filterList.prototype = {
+	
+	/**
+	 * 種類の名前からそのオブジェクト(typesにあるやつ)を取得する
+	 * @param {String} name name of type
+	 * @return {Object} typeObject
+	 */
+	_getTypeObjByName: function(name){
+	
+		//キャッシュにある場合はそれを返す
+		if(this._objCache && this._objCache[name]) return this._objCache[name];
+	
+		//ない場合は検索する
+		for(let i = 0; i < this.types.length; i++){
+			if(this.types[i].name === name){
+			
+				//キャッシュに登録
+				if(!this._objCache) this._objCache = {};
+				this._objCache[name] = this.types[i];
+			
+				return this.types[i];
+			}
+		}
+	},
+	
 	init: function(){
-		if(!this.storage){
-			this.storage = {};
-			this.storage['filter'] = window.globalStorage['adblockSharp.filter'];
-			this.storage['result'] = window.globalStorage['adblockSharp.result'];
-		}
-
-		this.JSON = Components.classes["@mozilla.org/dom/json;1"].createInstance(Components.interfaces.nsIJSON);
-
-		this.loadFilter();
-	},
-
-
-	uninit: function(){
-		this.saveFilter();
-	},
-
-
-	saveFilter: function(){
-		var blackReg = this.blackList.regFilter.concat(), blackReg_s = [];
-		var whiteReg = this.whiteList.regFilter.concat(), whiteReg_s = [];
-
-		for(let i=0,l=blackReg.length;i<l;i++){
-			blackReg_s[i] = blackReg[i] + '';
-		}
-		for(let i=0,l=whiteReg.length;i<l;i++){
-			whiteReg_s[i] = whiteReg[i] + '';
-		}
-
-		this.blackList.regFilter = blackReg_s.concat();
-		this.whiteList.regFilter = whiteReg_s.concat();
-
-		this.storage['filter'].setItem('blackList', this.JSON.encode(this.blackList));
-		this.storage['filter'].setItem('whiteList', this.JSON.encode(this.whiteList));
-
-		this.blackList.regFilter = blackReg.concat();
-		this.whiteList.regFilter = whiteReg.concat();
-	},
-
-	loadFilter: function(){
-		try{
-			if(adblockSharp.forceLoadFromScript) throw('forceLoadFromScript is true');
-			this.blackList = this.JSON.decode(this.storage['filter'].getItem('blackList').value);
-
-			for(let i=0,l=this.blackList.regFilter.length;i<l;i++){
-				var regStr = this.blackList.regFilter[i],
-					re = new RegExp(regStr.slice(1, regStr.length-1));
-				this.blackList.regFilter[i] = re;
-			}
-		}catch(e){
-			adblockSharp.debug('Error is occurred when loading blackList, so build-in filters (filter:) is used instead. (' + e + ')');
-			this.blackList = {
-				plainTextFilter: [],
-				regFilter: [],
-				starFilter: [],
-				prefixSuffixFilter: [],
-			};
-			adblockSharp.filter.forEach(function(element){
-				if(element.indexOf('@@') !== 0) adblockSharp.filterManager.sortFilter(element, this);
-			}, this.blackList);
-		}
-
-		try{
-			if(adblockSharp.forceLoadFromScript) throw('forceLoadFromScript is true');
-			this.whiteList = this.JSON.decode(this.storage['filter'].getItem('whiteList').value);
-
-			for(let i=0,l=this.whiteList.regFilter.length;i<l;i++){
-				var regStr = this.whiteList.regFilter[i],
-					re = new RegExp(regStr.slice(1, regStr.length-1));
-				this.whiteList.regFilter[i] = re;
-			}
-		}catch(e){
-			adblockSharp.debug('Error is occurred when loading whiteList, so build-in filters (filter:) is used instead. (' + e + ')');
-			this.whiteList = {
-				plainTextFilter: [],
-				regFilter: [],
-				starFilter: [],
-				prefixSuffixFilter: [],
-			};
-			adblockSharp.filter.forEach(function(element){
-				if(element.indexOf('@@') === 0) adblockSharp.filterManager.sortFilter(element.slice(2), this);
-			}, this.whiteList);
-		}
-	},
-
-
-	sortFilter: function(filter, filterset){
-		//正規表現フィルター
-		if($ = filter.match(/^\/(.*)\/$/)){
-			var re = new RegExp($[1]);
-			filterset.regFilter.push(re);
-			return;
-		}
-
-		//アスタリスクフィルター
-		if($ = filter.match(/^\+(.*)\+$/)){
-			var str = $[1].split('*');
-			filterset.starFilter.push(str);
-			return;
-		}
-
-		//前方一致
-		if(filter.indexOf("|") === 0){
-			filter = filter.substr(1);
-			if(filter.indexOf("*") !== -1){
-				var str = filter.split('*');
-				filterset.prefixSuffixFilter.push([2, str]);
-				return;
-			}
-
-			filterset.prefixSuffixFilter.push([1, filter]);
-			return;
-		}
-
-		//後方一致
-		if(filter.indexOf("|") === filter.length-1){
-			filter = filter.substr(0,filter.length-1);
-			if(filter.indexOf("*") !== -1){
-				var str = filter.split('*');
-				filterset.prefixSuffixFilter.push([4, str]);
-				return;
-			}
-
-			filterset.prefixSuffixFilter.push([3, filter]);
-			return;
-		}
-
-		//「/」 で囲まれた単純文字列フィルター
-		if($ = filter.match(/^\*\/(.*)\/\*$/)){
-			filterset.plainTextFilter.push('/' + $[1] + '/');
-			return;
-		}
-
-		//アスタリスクフィルター(+不使用)
-		if(this.starfilterWithoutPlus || filter.indexOf("*") !== -1){
-			var str = filter.split('*');
-			filterset.starFilter.push(str);
-			return;
-		}
-
-		//単純文字列のフィルター
-		filterset.plainTextFilter.push(filter);
-		return;
-	},
-
-
-	add: function(doc){
-		var str = doc.getElementById('filterBox').value, self = adblockSharp.filterManager;
-		str = str.split('\n');
-
-		for(let i=0,l=str.length;i<l;i++){
-			if(str[i].length === 0) continue;
-			if(str[i].indexOf('@@') !== 0){
-				self.sortFilter(str[i], self.blackList);
-			}else{
-				self.sortFilter(str[i].slice(2), self.whiteList);
-			}
-		}
-
-		//更新
-		self.updateManager(doc);
-		self.saveFilter();
-	},
-
-	change: function(doc){
-		adblockSharp.filterManager.delete(doc);
-		adblockSharp.filterManager.add(doc);
-	},
-
-	delete: function(doc){
-		var checked = (function(){
-			let selects = doc.getElementsByClassName('selectBox'),len=selects.length,array=[];
-			for(let i=0;i<len;i++) if(selects[i].checked) array.push(selects[i]);
-			return array;
-		})();
-
-		for(let i=checked.length-1;i>=0;i--){
-			var filterset = adblockSharp.filterManager[checked[i].getAttribute('listkind')][checked[i].getAttribute('kind')];
-
-			adblockSharp.filterManager.storage['result'].removeItem(filterset[checked[i].getAttribute('number')]);
-			filterset.splice(checked[i].getAttribute('number'), 1);
-		}
-
-		//更新
-		adblockSharp.filterManager.updateManager(doc);
-		adblockSharp.filterManager.saveFilter();
-	},
-
-
-	deleteStorage: function(doc, kind){
-		if(!confirm('\u672c\u5f53\u306b\u524a\u9664\u3057\u307e\u3059\u304b\uff1f')) return;
-		var storage = this.storage[kind];
-
-		for(let i in storage){
-			storage.removeItem(i);
-		}
-
-		adblockSharp.filterManager.updateManager(doc);
-	},
-
-
-	reload: function(doc){
-		if(!confirm('\u672c\u5f53\u306b\u518d\u8aad\u8fbc\u3057\u307e\u3059\u304b\uff1f')) return;
-		adblockSharp.forceLoadFromScript = true;
-		adblockSharp.filterManager.init();
-		adblockSharp.forceLoadFromScript = false;
-		adblockSharp.filterManager.updateManager(doc);
-	},
-
-
-	export: function(doc){
-		var str = 'filter: [\n';
-
-		function getStr(filterset, filterKind, filterName){
-			var str = '',f,l=filterset.length;
-
-			for(let i=0;i<l;i++){
-				str += "'" 
-					+ adblockSharp.filterManager.getFilterStr({
-						filterset: filterset,
-						filterKind: filterKind,
-						filterName: filterName
-					}, i)
-					+ "',\n";
-			}
-
-			return str;
-		}
-
-		str += getStr(adblockSharp.filterManager.blackList.plainTextFilter, 'blackList', 'plainTextFilter'); str += '\n';
-		str += getStr(adblockSharp.filterManager.blackList.starFilter, 'blackList', 'starFilter'); str += '\n';
-		str += getStr(adblockSharp.filterManager.blackList.prefixSuffixFilter, 'blackList', 'prefixSuffixFilter'); str += '\n';
-		str += getStr(adblockSharp.filterManager.blackList.regFilter, 'blackList', 'regFilter'); str += '\n';
-		str += getStr(adblockSharp.filterManager.whiteList.plainTextFilter, 'whiteList', 'plainTextFilter'); str += '\n';
-		str += getStr(adblockSharp.filterManager.whiteList.starFilter, 'whiteList', 'starFilter'); str += '\n';
-		str += getStr(adblockSharp.filterManager.whiteList.prefixSuffixFilter, 'whiteList', 'prefixSuffixFilter'); str += '\n';
-		str += getStr(adblockSharp.filterManager.whiteList.regFilter, 'whiteList', 'regFilter'); str += '\n';
-
-		str += '],';
-
-		doc.getElementById('filterBox').value = str;
-	},
-
-	optimize: function(doc){
-		if(!confirm('\u672c\u5f53\u306b\u6700\u9069\u5316\u3057\u307e\u3059\u304b\uff1f')) return;
-
-		function compare(a, b){
-			var aData = adblockSharp.filterManager.storage['result'].getItem(a+''),
-				bData = adblockSharp.filterManager.storage['result'].getItem(b+''),
-				aTime = aData && (aData = aData.value) ? aData.slice(aData.lastIndexOf('time')+6, aData.lastIndexOf('}')) : 0,
-				bTime = bData && (bData = bData.value) ? bData.slice(bData.lastIndexOf('time')+6, bData.lastIndexOf('}')) : 0,
-				aDate = aData ? aData.slice(aData.lastIndexOf('date')+6, aData.lastIndexOf(',"time"')) : 0,
-				bDate = bData ? bData.slice(bData.lastIndexOf('date')+6, bData.lastIndexOf(',"time"')) : 0;
-
-			try{
-				if((bTime - aTime) !== 0){
-					return bTime - aTime;
-				}else{
-					return bDate - aDate;
-				}
-			}catch(e){
-				return 1;
-			}
-		}
-
-		adblockSharp.filterManager.blackList.plainTextFilter.sort(compare);
-		adblockSharp.filterManager.blackList.starFilter.sort(compare);
-		adblockSharp.filterManager.blackList.prefixSuffixFilter.sort(compare);
-		adblockSharp.filterManager.blackList.regFilter.sort(compare);
-		adblockSharp.filterManager.whiteList.plainTextFilter.sort(compare);
-		adblockSharp.filterManager.whiteList.starFilter.sort(compare);
-		adblockSharp.filterManager.whiteList.prefixSuffixFilter.sort(compare);
-		adblockSharp.filterManager.whiteList.regFilter.sort(compare);
-
-		adblockSharp.filterManager.updateManager(doc);
-		adblockSharp.filterManager.saveFilter();
-	},
-
-
-	// aFilterData = {
-	//   filterset: blackList.plainTextFilter,
-	//   filterKind: 'blackList',
-	//   filterName: 'plainTextFilter',
-	// }
-	getFilterStr: function(aFilterData, aIndex){
-		var str = aFilterData.filterKind === 'whiteList' ? '@@' : '';
-
-		switch(aFilterData.filterName){
-			case 'plainTextFilter':
-				var f = aFilterData.filterset[aIndex];
-				if(/^\/.*\/$/.test(f)){
-					str += '*' + f + '*';
-				}else{
-					str += f;
-				}
-				break;
-
-			case 'starFilter':
-				str += '+' + aFilterData.filterset[aIndex].join('*') + '+';
-				break;
-
-			case 'prefixSuffixFilter':
-				str += (aFilterData.filterset[aIndex][0] <= 2 ? '|' : '')
-						+ aFilterData.filterset[aIndex][1].join('*')
-					+  (aFilterData.filterset[aIndex][0] > 2 ? '|' : '');
-				break;
-
-			case 'regFilter':
-				str += aFilterData.filterset[aIndex]+'';
-				break;
-
-			default:
-				str += aFilterData.filterset[aIndex];
-				break;
-		}
-
-		return str;
-	},
-
-
-	matchesAny: function(url, filterset, filtername){
-		var len = 0;
-
-		//単純な文字列のフィルターにマッチするかどうか : 高速
-		len = filterset.plainTextFilter.length;
-		if(len){
-			for(let i=0; i!==len; i++){
-				if(url.indexOf(filterset.plainTextFilter[i]) !== -1){
-					this.setResult(url, filterset.plainTextFilter[i]);
-					return true;
-				}
-			}
-		}
-
-		//アスタリスクフィルターにマッチするかどうか : 普通?
-		len = filterset.starFilter.length
-		if(len){
-			var lastMatch,match,isMatch,lena;
-			for(let j=0; j!==len; j++){
-				lastMatch = -1;
-				isMatch = true;
-				lena = filterset.starFilter[j].length;
-				for(let i=0; i!==lena; i++){
-					match = url.indexOf(filterset.starFilter[j][i]);
-					isMatch = match > lastMatch;
-					if(isMatch) lastMatch = match;
-					else break;
-				}
-
-				if(isMatch){
-					this.setResult(url, filterset.starFilter[j]);
-					return true;
-				}
-			}
-		}
-
-		//前方or後方一致フィルターにマッチするかどうか : 普通?
-		len = filterset.prefixSuffixFilter.length;
-		if(len){
-			var filtertemp,filtertemplen;
-
-			for(let i=0; i!==len; i++){
-				filtertemp = filterset.prefixSuffixFilter[i][1];
-				filtertemplen = filtertemp.length;
-
-				switch(filterset.prefixSuffixFilter[i][0]){
-
-					//前方一致 - 単純文字列
-					case 1:
-						if(url.indexOf(filtertemp) === 0){
-							this.setResult(url, filtertemp);
-							return true;
-						}
-						break;
-
-					//前方一致 - アスタリスク
-					case 2:
-						var lastMatch = 0, match;
-						var isMatch = true;
-
-						if(url.indexOf(filtertemp[0]) !== 0) break;
-						for(let j=1; j!==filtertemplen; j++){
-							match = url.indexOf(filtertemp[j]);
-							isMatch = match > lastMatch;
-							if(isMatch) lastMatch = match;
-							else break;
-						}
+		/**
+		 * フィルタのデータ
+		 *
+		 * {
+		 *    (String) name: フィルタの種類名
+		 *    (Boolean:Function) match(String:url) マッチ処理を行う関数 マッチしたときはフィルタの番号, マッチしなかったときはfalseを返す
+		 *    (Boolean:Function) isThisType(String:filter) 種類に合致するフィルタかどうかを返す関数
+		 *    (FilterObject:Function) format(String:filter) フィルタを整形する関数 予めマッチ処理が行いやすい形(正規表現ならRegExpオブジェクト)にしたものを返す
+		 *    (String:Function) toString(FilterObject:filter) フォーマット済みフィルタデータを文字列形式にする関数
+		 *    (Array) list フィルタのリスト
+		 * }
+		 *
+		 * @type Array
+		 */
+		this.types = [
 		
-						if(isMatch){
-							this.setResult(url, filtertemp);
-							return true;
-						}
-						break;
+			{
+				name: 'regExp',
+				
+				name_ja: '正規表現フィルタ',
+				
+				list: [],
+				
+				isThisType: function(filter){
+					return /^\/.*\/$/.test(filter);
+				},
+				
+				format: function(filter){
+					return new RegExp(filter.match(/^\/(.*)\/$/)[1], getPref('regexp-frags'));
+				},
+				
+				match: function(url){
+					for(let i = 0, l = this.list.length; i !== l; i++){
+						if(this.list[i].test(url)) return i;
+					}
+					
+					return false;
+				},
+				
+				toString: function(filter){
+					return filter.toString();
+				},
+			},
+			
+			{
+				name: 'star',
+				
+				name_ja: 'アスタリスクフィルタ',
+				
+				list: [],
+				
+				isThisType: function(filter){
+					var tmp = filter.slice(1, -1);
+					
+					return (filter[0] === '+' && filter[filter.length-1] === '+') || 
+						   ( getPref('star-filter-without-plus') && tmp.indexOf("*") !== -1 );
+				},
+				
+				format: function(filter){
+					if( ( filter[0] === '+' && filter[filter.length-1] === '+' ) ||
+						( filter[0] === '*' && filter[filter.length-1] === '*' )   ){
+						filter = filter.slice(1, -1);
+					}
 
-					//後方一致 - 単純文字列
-					case 3:
-						if(url.indexOf(filtertemp) === url.length - filtertemplen){
-							this.setResult(url, filtertemp);
-							return true;
+					return filter.split('*');
+				},
+				
+				match: function(url){
+					
+					nextFilter:
+					for(let i = 0, l = this.list.length; i !== l; i++){
+						var lastMatch = 0,
+							match = -1,
+							filter = this.list[i];
+					
+						for(let j=0, l=filter.length; j!==l; j++){
+						
+							var match = url.indexOf(filter[j], lastMatch);
+							
+							if(match !== -1){
+								lastMatch = match + filter[j].length + 1;
+							}else{
+								continue nextFilter;
+							}
+							
 						}
-						break;
-
-					//後方一致 - アスタリスク
-					case 4:
-						var lastMatch = -1, match;
-						var isMatch = true;
-						for(let j=0; j!==filtertemplen; j++){
-							match = url.indexOf(filtertemp[j]);
-							isMatch = match > lastMatch;
-							if(isMatch) lastMatch = match;
-							else break;
+					
+						return i;
+					}
+					
+					return false;
+				},
+				
+				toString: function(filter){
+					return '+' + filter.join('*') + '+';
+				},
+			},
+			
+			{
+				name: 'prefix',
+				
+				name_ja: '先頭一致フィルタ',
+				
+				list: [],
+				
+				isThisType: function(filter){
+					return filter.lastIndexOf('|', 0) !== -1;
+				},
+				
+				format: function(filter){
+					var $ = filter.substr(1);
+					return $.indexOf('*') !== -1 ? $.split('*') : $;
+				},
+				
+				match: function(url){
+				
+					nextFilter:
+					for(let i = 0, l = this.list.length; i !== l; i++){
+						var filter = this.list[i];
+						
+						if(typeof filter === 'string'){
+							//単純文字列
+							if(url.lastIndexOf(filter, 0) !== -1) return i;
+						}else{
+							//アスタリスク
+							
+							//先頭
+							if(url.lastIndexOf(filter[0], 0) === -1) continue;
+							
+							//2番目以降
+							var lastMatch = 0,
+								match = -1;
+					
+							for(let j=1, l=filter.length; j!==l; j++){
+							
+								var match = url.indexOf(filter[j], lastMatch);
+								
+								if(match !== -1){
+									lastMatch = match + filter[j].length + 1;
+								}else{
+									continue nextFilter;
+								}
+								
+							}
+							
+							return i;
 						}
-
-						var fn = filtertemplen-1;
-						if(isMatch && url.indexOf(filtertemp[fn]) === url.length - filtertemp[fn].length){
-							this.setResult(url, filtertemp);
-							return true;
+					}
+					
+					return false;
+				},
+				
+				toString: function(filter){
+					if(typeof filter === 'string'){
+						return '|' + filter;
+					}else{
+						return '|' + filter.join('*');
+					}
+				},
+			},
+			
+			{
+				name: 'suffix',
+				
+				name_ja: '後方一致フィルタ',
+				
+				list: [],
+				
+				isThisType: function(filter){
+					return filter.indexOf('|', filter.length - 1) !== -1;
+				},
+				
+				format: function(filter){
+					var $ = filter.substr(0, filter.length-1);
+					return $.indexOf('*') !== -1 ? $.split('*') : $;
+				},
+				
+				match: function(url){
+				
+					nextFilter:
+					for(let i = 0, l = this.list.length; i !== l; i++){
+						var filter = this.list[i];
+						
+						if(typeof filter === 'string'){
+							//単純文字列
+							if(url.indexOf(filter, url.length - filter.length) !== -1) return i;
+						}else{
+							//アスタリスク
+							
+							//一番後ろ
+							var lastChild = filter[filter.length-1];
+							if(url.indexOf(lastChild, url.length - lastChild.length) === -1) continue;
+							
+							//2番目以降
+							var lastMatch = 0,
+								match = -1;
+					
+							for(let j=0, l=filter.length - 1; j!==l; j++){
+							
+								var match = url.indexOf(filter[j], lastMatch);
+								
+								if(match !== -1){
+									lastMatch = match + filter[j].length + 1;
+								}else{
+									continue nextFilter;
+								}
+								
+							}
+							
+							return i;
 						}
-						break;
+					}
+					
+					return false;
+				},
+				
+				toString: function(filter){
+					if(typeof filter === 'string'){
+						return filter + '|';
+					}else{
+						return filter.join('*') + '|';
+					}
+				},
+			},
+			
+			{
+				name: 'plainText',
+				
+				name_ja: '単純文字列フィルタ',
+				
+				list: [],
+				
+				isThisType: function(filter){
+					/* 特殊な書式でないフィルタはすべて単純文字列フィルタ */
+					return true;
+				},
+				
+				format: function(filter){
+					var $;
+					return ($ = filter.match(/^\*\/(.*)\/\*$/)) ? '/' + $[1] + '/' : filter;
+				},
+				
+				match: function(url){
+					for(let i = 0, l = this.list.length; i !== l; i++){
+						if(url.indexOf(this.list[i]) !== -1) return i;
+					}
+					
+					return false;
+				},
+				
+				toString: function(filter){
+					if(/^\/.*\/$/.test(filter)){
+						return '*' + filter + '*';
+					}else{
+						return filter;
+					}
+				},
+			},
+			
+		];
+		
+		/**
+		 * マッチ履歴
+		 * フィルタ文字列をキーとした以下のオブジェクトの集合
+		 *
+		 * {
+		 *    url: 最後にマッチしたURL
+		 *    count: マッチした回数
+		 *    date: 最後にマッチした日時
+		 * }
+		 *
+		 * @type Object
+		 */
+		this.history = {};
+		
+		
+		this.observer = Cc['@mozilla.org/observer-service;1'].getService(Ci.nsIObserverService);
+		this.observer.addObserver(this, 'adblock#:FilterMatched', false);
+		this.observer.addObserver(this, 'adblock#:FilterAdded', false);
+		this.observer.addObserver(this, 'adblock#:FilterDeleted', false);
+	},
+	
+	uninit: function(){
+		this.observer.removeObserver(this, 'adblock#:FilterMatched');
+		this.observer.removeObserver(this, 'adblock#:FilterAdded');
+		this.observer.removeObserver(this, 'adblock#:FilterDeleted');
+	},
+	
+	/**
+	 * フィルタがマッチ、追加、削除された時の処理を非同期に行うための関数
+	 * notifyObserverによって呼び出される
+	 */
+	observe: function(subject, topic, data){
+		if(topic.lastIndexOf('adblock#:', 0) === -1) return;
+		
+		var data = JSON.parse(data);
+		
+		switch(topic){
+		
+			case 'adblock#:FilterMatched':
+			
+				var typeObj = this._getTypeObjByName(data.typeName);
+				if(data.filter !== typeObj.toString(typeObj.list[data.index])) return;
+				
+				var history = this.history[data.filter];
+				var count =  history ? history.count+1 : 1;
+				
+				this.history[data.filter] = {
+					date: data.date,
+					url: data.url,
+					count: count
+				};
+			
+				break;
+				
+				
+			case 'adblock#:FilterAdded':
+				//すでに追加されている場合はスルー
+				if(adblockSharp._addFilterFlag){
+					adblockSharp._addFilterFlag = false;
+					return;
 				}
-			}
+				
+				//そうじゃないときはフィルタを再読み込みする
+				adblockSharp.load();
+			
+				break;
+				
+				
+			case 'adblock#:FilterDeleted':
+				var typeObj = this._getTypeObjByName(data.typeName);
+				var filter = typeObj.list[data.index];
+				
+				//存在しないフィルタの場合
+				if(!filter || data.filter !== typeObj.toString(filter)) return;
+				
+				delete this.history[data.filter];
+				typeObj.list.splice(data.index, 1);
+			
+				break;
+				
+			case 'adblock#:OptimizeFilter':
+			
+				//すでに最適化済みの時はしない
+				if(this._optimizedFlag){
+					this._optimizedFlag = false;
+					return;
+				}
+				
+				this.optimize(true);
 		}
+		
+		
 
-		//正規表現のフィルターにマッチするかどうか : 低速
-		len = filterset.regFilter.length;
-		if(len){
-			for(let i=0; i!==len; i++){
-				if(filterset.regFilter[i].test(url)){
-					this.setResult(url, filterset.regFilter[i]+'');
+	},
+	
+	
+	/**
+	 * 全フィルタにマッチするかどうか調べる
+	 *
+	 * @param {String} url 調べるURI
+	 * @return {Boolean} マッチしたかどうか
+	 */
+	match: function(url, win){
+
+		return this.types.some(function(typeObj){
+			
+			var matched = typeObj.match(url);
+			
+			if(matched !== false){
+				var index = matched;
+				var filter = typeObj.list[index];
+				var filterStr = typeObj.toString(filter);
+
+				var matchedDate = (new Date()).getTime();
+				
+				//notify filter was matched
+				var data = {
+					typeName: typeObj.name,
+					index: index,
+					filter: filterStr,
+					date: matchedDate,
+					url: url
+				};
+				
+				this.observer.notifyObservers(null, 'adblock#:FilterMatched', JSON.stringify(data));
+				
+				//Log
+				log('[Filter Matched] ' + url + ' (filter: ' + filterStr + ')');
+				
+				return true;
+			
+			}else{
+				return false;
+			};
+			
+		}, this);
+		
+	},
+	
+	/**
+	 * フィルタを追加する
+	 * @param {String|Array} filterArray 追加するフィルタの配列
+	 */
+	add: function(filterArray){
+		if(typeof filterArray === 'string')
+			filterArray = [ filterArray ];
+	
+		filterArray.forEach(function(filter){
+		
+			this.types.some(function(typeObj){
+			
+				if(typeObj.isThisType(filter)){
+					typeObj.list.push( typeObj.format(filter) );
+					
 					return true;
 				}
-			}
-		}
-
-		return false;
+				
+				return false;
+				
+			}, this);
+			
+		}, this);
+		
+		//保存
+		adblockSharp.save();
+		
+		//無駄な再読み込みを避けるためのフラグ
+		adblockSharp._addFilterFlag = true;
+		
+		//他のウィンドウに通知する
+		this.observer.notifyObservers(null, 'adblock#:FilterAdded', null);
+	
 	},
-
-
-	setResult: function(url, filter){
-		//結果データベースの更新
-		var storage = this.storage['result'],
-			data = storage[filter],
-			time = 1;
-
-		if(data){
-			var str = data.value,
-				oldtime = str.slice(str.lastIndexOf('time')+6, str.lastIndexOf('}')) - 0;
-			time = oldtime ? oldtime + 1 : 1;
-		}
-
-		//手動JSONエンコード
-		storage.setItem(filter, '{"url":"'+url+'","date":'+(new Date()).getTime()+',"time":'+time+'}');
-
-		adblockSharp.debug('Filter Matched: ' + url + ' (Filter: ' + filter + ')');
-	},
-
-	showManager: function(){
-		var wm = Components.classes["@mozilla.org/appshell/window-mediator;1"]
-		                   .getService(Components.interfaces.nsIWindowMediator);
-		var mainWindow = wm.getMostRecentWindow("navigator:browser");
-		var browser = mainWindow.gBrowser;
-		var tab = browser.addTab('about:blank');
-		var newTab = browser.getBrowserForTab(tab);
-		browser.selectedTab = tab;
-
-		newTab.addEventListener('load', function(){
-			newTab.removeEventListener('load', arguments.callee, true);
-
-			var doc = newTab.contentDocument;
-			doc.title = 'adblock#.uc.js Filter Manager';
-
-			var tags = <![CDATA[
-				<style type="text/css">
-					table,tr,td{ border:1px black solid; }
-					table{ border-collapse: collapse; margin-bottom: 1em; }
-					input{ border: 1px black solid; margin: 0.5em;}
-					input:hover,input:active{ border: 1px #222 solid; background-color: #ddd;}
-				</style>
-
-				<h2>adblock#.uc.js Filter Manager</h2>
-			]]>;
-
-
-			tags += '<h3>adblock#.uc.js \u30d5\u30a3\u30eb\u30bf\u30fc\u7d50\u679c</h3>';//フィルター結果
-
-			//結果描画スペース
-			tags += '<div id="filterResult"></div>';
-
-			//追加/削除
-			tags += "<hr><h3>\u30d5\u30a3\u30eb\u30bf\u30fc\u64cd\u4f5c</h3>";
-			tags += '<textarea rows="5" cols="100" id="filterBox"></textarea><br>'
-					+'<input type="button" value="\u8ffd\u52a0" id="add">'
-					+'<input type="button" value="\u5909\u66f4" id="change">'
-					+'<input type="button" value="\u524a\u9664" id="delete">'
-					+'<input type="button" value="\u7d50\u679c\u30b9\u30c8\u30ec\u30fc\u30b8\u5168\u524a\u9664" id="resultStorageDelete">'
-					+'<input type="button" value="filter\u003a\u0020\u304b\u3089\u518d\u8aad\u8fbc" id="reloadFilter">'
-					+'<input type="button" value="\u30d5\u30a3\u30eb\u30bf\u30fc\u3092\u0020filter\u003a\u0020\u5f62\u5f0f\u3067\u66f8\u304d\u51fa\u3059" id="exportFilter">'
-					+'<input type="button" value="\u30d5\u30a3\u30eb\u30bf\u30fc\u3092\u6700\u9069\u5316" id="optimizeFilter">';
-
-			//描画/イベント追加など
-			doc.body.innerHTML = tags;
-			adblockSharp.filterManager.updateManager(doc);
-
-			doc.getElementById('add').addEventListener('click', function(){ adblockSharp.filterManager.add(doc) }, false);
-			doc.getElementById('change').addEventListener('click', function(){ adblockSharp.filterManager.change(doc) }, false);
-			doc.getElementById('delete').addEventListener('click', function(){ adblockSharp.filterManager.delete(doc) }, false);
-			doc.getElementById('resultStorageDelete').addEventListener('click', function(){
-				adblockSharp.filterManager.deleteStorage(doc, 'result');
-			}, false);
-			doc.getElementById('reloadFilter').addEventListener('click', function(){
-				adblockSharp.filterManager.reload(doc);
-			}, false);
-			doc.getElementById('exportFilter').addEventListener('click', function(){
-				adblockSharp.filterManager.export(doc);
-			}, false);
-			doc.getElementById('optimizeFilter').addEventListener('click', function(){
-				adblockSharp.filterManager.optimize(doc);
-			}, false);
-		}, true);
-	},
-
-	updateManager: function(doc){
-		doc.getElementById('filterBox').value = '';
-
-		var tags = '';
-
-		function getResult(filterset, filtername, kind, listKind){
-			var str = '<caption>' + filtername + '</caption>'
-				+'<table><tr style="background-color:#dedede">'
-				+'<td>Filter</td><td>Latest Hit Date</td><td>Hit Times</td><td>Select</td></tr>';
-
-			var len = filterset.length,s,id,jsonData,data;
-
-			for(let i=0;i<len;i++){
-				var filterData = {
-					filterset: filterset,
-					filterKind: listKind,
-					filterName: kind
-				};
-
-				s = adblockSharp.filterManager.getFilterStr(filterData, i);
-
-				if(kind === 'regFilter'){
-					jsonData = adblockSharp.filterManager.storage['result'].getItem(filterset[i]+'');
-				}else{
-					jsonData = adblockSharp.filterManager.storage['result'].getItem(filterset[i]);
-				}
-
-				if(jsonData){
-					data = jsonData.value;
-					str += '<tr><td>'+s+'</td>'
-							+'<td>'+(new Date(data.slice(data.lastIndexOf('date')+6, data.lastIndexOf(',"time"'))-0)).toLocaleString()+'</td>'
-							+'<td>'+(data.slice(data.lastIndexOf('time')+6, data.lastIndexOf('}')))+'</td>'
-							+'<td><input type="checkbox" class="selectBox" number="'+i+'" kind="'+kind+'" listkind="'+listKind+'"></td></tr>';
-				}else{
-					str += '<tr><td>'+s+'</td><td>-</td><td>0</td>'
-							+'<td><input type="checkbox" class="selectBox" number="'+i+'" kind="'+kind+'" listkind="'+listKind+'"></td></tr>';
-				}
-			}
-
-			str += '</table>';
-
-			return str;
+	
+	/**
+	 * フィルタを削除する
+	 * @param {String|Number} type フィルタの種類
+	 * @param {Number} index 削除するフィルタの添え字番号
+	 */
+	delete: function(type, index){
+		if(typeof type == 'number')
+			type = this.types[type].name;
+		
+		var typeObj = this._getTypeObjByName(type);
+		
+		var data = {
+			typeName: type,
+			index: index,
+			filter: typeObj.toString(typeObj.list[index])
 		};
-
-		tags += '<h4>Black List</h4>';
-		tags += getResult(adblockSharp.filterManager.blackList.plainTextFilter
-							,'\u5358\u7d14\u6587\u5b57\u5217\u30d5\u30a3\u30eb\u30bf\u30fc', 'plainTextFilter', 'blackList');
-
-		tags += getResult(adblockSharp.filterManager.blackList.starFilter
-							,'\u30a2\u30b9\u30bf\u30ea\u30b9\u30af\u30d5\u30a3\u30eb\u30bf\u30fc', 'starFilter', 'blackList');
-
-		tags += getResult(adblockSharp.filterManager.blackList.prefixSuffixFilter
-							,'\u524d\u65b9\u002f\u5f8c\u65b9\u4e00\u81f4\u30d5\u30a3\u30eb\u30bf\u30fc', 'prefixSuffixFilter', 'blackList');
-
-		tags += getResult(adblockSharp.filterManager.blackList.regFilter
-							,'\u6b63\u898f\u8868\u73fe\u30d5\u30a3\u30eb\u30bf\u30fc', 'regFilter', 'blackList');
-
-		tags += '<h4>White List</h4>';
-		tags += getResult(adblockSharp.filterManager.whiteList.plainTextFilter
-							,'\u5358\u7d14\u6587\u5b57\u5217\u30d5\u30a3\u30eb\u30bf\u30fc', 'plainTextFilter', 'whiteList');
-
-		tags += getResult(adblockSharp.filterManager.whiteList.starFilter
-							,'\u30a2\u30b9\u30bf\u30ea\u30b9\u30af\u30d5\u30a3\u30eb\u30bf\u30fc', 'starFilter', 'whiteList');
-
-		tags += getResult(adblockSharp.filterManager.whiteList.prefixSuffixFilter
-							,'\u524d\u65b9\u002f\u5f8c\u65b9\u4e00\u81f4\u30d5\u30a3\u30eb\u30bf\u30fc', 'prefixSuffixFilter', 'whiteList');
-
-		tags += getResult(adblockSharp.filterManager.whiteList.regFilter
-							,'\u6b63\u898f\u8868\u73fe\u30d5\u30a3\u30eb\u30bf\u30fc', 'regFilter', 'whiteList');
-
-
-		doc.getElementById('filterResult').innerHTML = tags;
-
-		var select = doc.getElementsByClassName('selectBox');
-		for(let i=0,l=select.length;i<l;i++){
-			select[i].addEventListener('change', function(e){
-				var filterData = {
-					filterset: adblockSharp.filterManager[e.target.getAttribute('listkind')][e.target.getAttribute('kind')],
-					filterKind: e.target.getAttribute('listkind'),
-					filterName: e.target.getAttribute('kind')
-				}
-
-				if(e.target.checked){
-					doc.getElementById('filterBox').value += adblockSharp.filterManager.getFilterStr(filterData, e.target.getAttribute('number')) + '\n';
-				}else{
-					doc.getElementById('filterBox').value = 
-						doc.getElementById('filterBox').value.replace(
-							adblockSharp.filterManager.getFilterStr(filterData, e.target.getAttribute('number')),
-							''
-						).replace(/\n\n/g,'\n').replace(/^\n/,'');
-				}
-			}, false);
+		
+		delete this.history[data.filter];
+		typeObj.list.splice(index, 1);
+		
+		this.observer.notifyObservers(null, 'adblock#:FilterDeleted', JSON.stringify(data));
+	},
+	
+	/**
+	 * フィルタの順序を最適化する
+	 * よりヒットしているフィルタを前に持ってくることで、マッチ時間が短くなる（かも）
+	 */
+	optimize: function(notNotify){
+		var that = this;
+		
+		this.types.forEach(function(typeObj){
+		
+			typeObj.list.sort(function(a, b){
+				var aStr = typeObj.toString(a);
+				var bStr = typeObj.toString(b);
+				var aHistory = that.history[aStr];
+				var bHistory = that.history[bStr];
+				
+				if(!aHistory) return 1;
+				if(!bHistory) return -1;
+			
+				return (bHistory.count - aHistory.count) || (bHistory.date - aHistory.date) || 1;
+			});
+			
+		}, this);
+		
+		if(notNotify){
+			//notifyとで二重に最適化されるのを防ぐためのフラグ
+			this._optimizedFlag = true;
+			
+			this.observer.notifyObservers(null, 'adblock#:OptimizeFilter', null);
 		}
 	},
+	
+};
+
+
+adblockSharp.filterManager = {
+	
+	template: btoa(<![CDATA[
+		<!DOCTYPE html>
+		<html lang='ja'>
+		<head>
+			<meta charset="utf-8" />
+			<title>adblock#.uc.js Filter Manager</title>
+			<style>
+				*{
+					line-height: 1.5;
+					-moz-box-sizing: border-box;
+					box-sizing: border-box;
+					margin: 0;
+					padding: 0;
+					font-weight: normal;
+				}
+				body{
+					overflow-x: hidden;
+				}
+				#container{
+				}
+				#sidebar{
+					background-color: #efefef;
+					color: #333;
+					border-right: 1px #ccc solid;
+					border-bottom: 1px #ccc solid;
+					text-align: right;
+					position: fixed;
+					top: 0; left: 0;
+					width: 20%;
+					height: 100%;
+				}
+				#main{
+					margin-left: 20%;
+					width: 80%;
+				}
+				#page-title{
+					padding: 0.3em;
+				}
+				
+				#menu{
+					margin-top: 1em;
+					list-style-type: none;
+				}
+				#menu a{
+					text-decoration: none;
+					color: black;
+					display: block;
+					padding: 0.5em;
+					padding-right: 1.2em;
+				}
+				#menu a:hover{
+					background-color: #b8baff;
+					outline: 1px skyblue solid;
+				}
+				
+				#blackList, #whiteList, #pref{
+					display: none;
+					padding: 1em;
+				}
+				#blackList:target, #whiteList:target, #pref:target{
+					display: block;
+				}
+				
+				#main h1{
+					border-bottom: #ccc 1px solid;
+					padding-right: 85%;
+					margin-bottom: 1.3em;
+					min-width: 11em;
+					white-space: nowrap;
+				}
+				#main h2{
+					font-weight: bold;
+					font-size: 90%;
+				}
+				#main h2 + *{
+					margin-top: -1.5em;
+					margin-left: 20%;
+				}
+				#main h3{
+					color: #333;
+					margin-bottom: 1.3em;
+				}
+				#main h3 + *{
+					font-size: 90%;
+					margin-left: 1.5em;
+				}
+				
+				input[type='text']{
+					border: 1px #bfbfbf solid;
+					border-radius: 3px;
+					-moz-border-radius: 3px;
+					color: #444;
+					padding: 3px;
+				}
+				button, input[type='checkbox'], select{
+					background-image: linear-gradient(to bottom, #ededed, #ededed 38%, #dedede);
+					background-image: -moz-linear-gradient(top, #ededed, #ededed 38%, #dedede);
+					border: 1px #ccc solid;
+					border-radius: 3px;
+					-moz-border-radius: 3px;
+					box-shadow: 0 1px 0 rgba(0, 0, 0, 0.1);
+					-moz-box-shadow: 0 1px 0 rgba(0, 0, 0, 0.1);
+					color: #444;
+					text-shadow: 0 1px 0 #f0f0f0;
+					padding: 2px 10px;
+					margin: 0 5px;
+				}
+				button::-moz-focus-inner{
+					border: 0 !important;
+					padding: 0 !important;
+				}
+				textarea{
+					resize: none;
+				}
+				
+				table{
+					border-collapse: collapse;
+					outline: 1px solid #bcbcbc;
+					max-width: 80%;
+				}
+				tr, td{
+					padding: 5px;
+					cursor: default;
+				}
+				tr.header td{
+					background-color: #cccccc;
+					background-image: -moz-linear-gradient(top, #fff, #ccc);
+					background-image: linear-gradient(to bottom, #fff, #ccc);
+					border-right: 1px #333 solid;
+					padding: 2px 10px 2px 5px;
+				}
+				tr.header td:last-child{
+					border-right: none;
+				}
+				tr:not(.header):hover,
+				tr.selected{
+					background-color: #b8baff;
+				}
+				hr{
+					border: 1px #efefef solid;
+					margin: 1.3em 0;
+				}
+				.list-table-container hr{
+					border: none;
+				}
+				.list-table-container hr:not(:first-child){
+					border: #efefef 1px solid;
+					width: 95%;
+					margin: 1.3em 0;
+				}
+				.filter-editbox{
+					width: 100%;
+					height: 1.5em;
+					border: 1px #ccc solid;
+					font-size: 100%;
+					font-family: sans;
+				}
+				
+				#dialog-wrapper{
+					width: 100%;
+					height: 100%;
+					background-color: rgba(0, 0, 0, 0.45);
+					z-index: 99;
+					display: none;
+					position: fixed;
+					top: 0; left: 0;
+				}
+				.dialog{
+					border: 1px #666 solid;
+					border-radius: 6px;
+					-moz-border-radius: 6px;
+					box-shadow: 0 4px 12px rgba(0, 0, 0, 0.6), 0 1px 0 rgba(255, 255, 255, 0.5) inset;
+					-moz-box-shadow: 0 4px 12px rgba(0, 0, 0, 0.6), 0 1px 0 rgba(255, 255, 255, 0.5) inset;
+					background-color: #fefefe;
+					padding: 1em;
+					position: fixed;
+					box-sizing: content-box;
+					-moz-box-sizing: content-box;
+					color: #444;
+					font-size: 90%;
+					overflow-x: hidden;
+					overflow-y: auto;
+					max-width: 90%;
+					max-height: 95%;
+				}
+				.dialog-textarea{
+					padding: 3px;
+					box-shadow: 0 4px 8px rgba(0, 0, 0, 0.6) inset;
+					-moz-box-shadow: 0 4px 8px rgba(0, 0, 0, 0.6) inset;
+					width: 100%;
+					margin: 1em auto;
+				}
+				.dialog-button-wrapper{
+					position: absolute;
+					bottom: 10px;
+					right: 10px;
+				}
+				.dialog-size-judgement{
+					visibility: hidden;
+					position: absolute;
+					top: 0; left: 0;
+					width: auto; height: auto;
+					line-height: 1.8;
+					padding: 1em;
+					padding-bottom: 1.5em;
+					box-sizing: content-box;
+					-moz-box-sizing: content-box;
+				}
+				
+				#toolbar-wrapper{
+					width: 100%;
+					position: absolute;
+					bottom: 1.5em;
+					left: 0;
+					text-align: center;
+				}
+				#toolbar{
+					display: inline-block;
+				}
+				.toolbar-button{
+					font-family: Arial, Helvetica, sans-serif;
+					font-size: 130%;
+					line-height: 1.0;
+					color: #3c3c3c;
+					height: 1.2em;
+					width: 1.8em;
+					margin: 0 5px;
+					background: -moz-linear-gradient(top, #efefef, #bcbcbc);
+					background: linear-gradient(to bottom, #efefef, #bcbcbc);
+					border-radius: 5px;
+					-moz-border-radius: 5px;
+					border: 1px solid #555;
+				}
+				
+				#script-information{
+					position: absolute;
+					bottom: 1.5em;
+					left: 20%;
+					margin-left: 1em;
+				}
+			</style>
+		</head>
+		<body>
+			<div id="container">
+				<div id="sidebar">
+					<h1 id="page-title">Filter Manager</h1>
+				
+					<ul id="menu">
+						<li><a href="#blackList">Black List</a></li>
+						<li><a href="#whiteList">White List</a></li>
+						<li><a href="#pref">Preference</a></li>
+					</ul>
+					<div id='toolbar-wrapper'><div id='toolbar'></div></div>
+				</div>
+				
+				<div id="main">
+					<div id="blackList">
+						<h1>Black List</h1>
+						<div class="list-table-container"></div>
+					</div>
+					<div id="whiteList">
+						<h1>White List</h1>
+						<div class="list-table-container"></div>
+					</div>
+					<div id='pref'>
+						<h1>Preference</h1>
+						
+						<h2>正規表現</h2>
+						<p>
+							正規表現のフラグ: <input type='text' id='pref-regexp-flags' />
+						</p>
+						
+						<hr />
+						
+						<h2>フィルタ認識</h2>
+						<p>
+							<label>
+								<input type='checkbox' id='pref-star-filter-without-plus' /> +なしでもアスタリスクフィルタとして認識する
+							</label>
+						</p>
+						
+						<div id='script-information'>
+							<h3>adblock#.uc.jsについて</h3>
+							<p>
+								adblock#.uc.jsは<a href='https://github.com/nodaguti/userChrome.js/tree/master/Adblock%23.uc.js'>Github</a>でホストされています.<br />
+								このスクリプトは<a href='http://www.opensource.org/licenses/mit-license.php'>MIT License</a>の下で配布されています.<br />
+								<a href='https://github.com/nodaguti/userChrome.js/commits/master.atom'>RSS</a>により本スクリプトの更新情報を購読できます.
+							</p>
+						</div>
+					</div>
+				</div>
+			</div>
+			
+			<div id="dialog-wrapper"></div>
+		</body>
+		</html>
+	]]>.toString().replace(/[\t\n]/g, "")),
+	
+	$: function(id){
+		return this.doc.getElementById(id);
+	},
+	
+	createNode: function(aTagName, attributes, aOwner){
+		var tag = this.doc.createElement(aTagName);
+	
+		if(attributes) this.setAttributes(tag, attributes);
+		if(aOwner) aOwner.appendChild(tag);
+		
+		return tag;
+	},
+	
+	setAttributes: function(aElement, attributes){
+		for(var i in attributes){
+			if(i === ':context'){
+				//テキストノードの場合
+				aElement.appendChild( this.doc.createTextNode(attributes[i]) );
+				
+			}else if(i === ':child'){
+				//innerHTML
+				var dom = typeof attributes[i] === 'string' ? this.textToDOM(attributes[i]) : attributes[i];
+				if(dom) aElement.appendChild(dom);
+				else aElement.innerHTML = attributes[i];
+				
+			}else{
+				aElement.setAttribute(i, attributes[i]);
+			}
+		}
+	},
+	
+	textToDOM: function(aString){
+		var range = this.doc.createRange();
+		return range.createContextualFragment(aString);
+	},
+	
+	launch: function(){
+		var browser = window.gBrowser;
+		var tab = browser.addTab('data:text/html,' + encodeURIComponent(this.template));
+		var tabBrowser = browser.getBrowserForTab(tab);
+		
+		browser.selectedTab = tab;
+		
+		var that = this;
+		
+		tabBrowser.addEventListener('DOMContentLoaded', function(){
+			tabBrowser.removeEventListener('DOMContentLoaded', arguments.callee, true);
+			
+			that.win = tabBrowser.contentWindow;
+			that.doc = tabBrowser.contentDocument;
+			that.init();
+			that.update();
+		}, false);
+	},
+	
+	init: function(){
+		var that = this;
+
+		this._addContext();
+		this._addToolbar();
+		
+		//bodyのイベント追加
+		this.doc.body.addEventListener('mousedown', function(event){
+			//フォーム要素, a要素の時には何もしない
+			if(event.target.nodeName.toLowerCase().search(/^(:?input|textarea|button|a|label)$/) !== -1) return;
+			
+			that._clearSelection();
+			that._finishEditingFilter();
+			that.applyPreference();
+		}, false);
+		
+		//bodyのイベント追加（aタグでmousedownが発火しないことへの対策）
+		this.doc.body.addEventListener('click', function(event){
+			if(event.target.nodeName.toLowerCase() !== 'a') return;
+			
+			that._clearSelection();
+			that._finishEditingFilter();
+			that.applyPreference();
+		}, false);
+		
+		//Firefox3.6でdata URI中でlocation.hashが動かないことへの対策
+		var tabs = Array.slice(this.doc.querySelectorAll('#menu > li > a'));
+		tabs.forEach(function(tab){
+			tab.addEventListener('click', function(event){
+				that.win.location.href = that.win.location.href.replace(/#\w+?$/, tab.href);
+			}, false);
+		});
+		
+		//設定を反映させる
+		var prefs = Array.slice(this.doc.querySelectorAll('[id^="pref-"]'));
+		
+		prefs.forEach(function(pref){
+			var key = pref.id.replace('pref-', '');
+			
+			if(pref.type === 'checkbox')
+				pref.checked = getPref(key);
+			else
+				pref.value = getPref(key);
+		}, this);
+		
+		//ブラックリストを開く
+		this.doc.defaultView.location.href += '#blackList';
+	},
+	
+	_addContext: function(){
+		var that = this;
+		
+		var menu = this.createNode('menu', { 'type': 'context', 'id': 'extra-context-menu' }, this.doc.body);
+		var context_change = this.createNode('menuitem', { 'label': btoa('編集'), 'id': 'context-change' }, menu);
+		var context_delete = this.createNode('menuitem', { 'label': btoa('削除'), 'id': 'context-delete' }, menu);
+		var context_add = this.createNode('menuitem', { 'label': btoa('追加'), 'id': 'context-add' }, menu);
+		
+		//menuitemのイベントを追加
+		context_change.addEventListener('click', function(event){
+			event.stopPropagation();
+			that.changeFilter(event);
+		}, false);
+		context_delete.addEventListener('click', function(event){
+			event.stopPropagation();
+			that.deleteFilter(event);
+		}, false);
+		context_add.addEventListener('click', function(event){
+			event.stopPropagation();
+			that.addFilter(event);
+		}, false);
+	},
+	
+	_addToolbar: function(){
+		var that = this;
+		
+		var toolbar = this.$('toolbar');
+		
+		var button_add = this.createNode('button', {
+			':context': '+', 'class': 'toolbar-button', id: 'button-add', title: btoa('追加')
+		}, toolbar);
+		
+		var button_delete = this.createNode('button', {
+			':context': '-', 'class': 'toolbar-button', id: 'button-delete', title: btoa('削除')
+		}, toolbar);
+		
+		var button_change = this.createNode('button', {
+			':context': btoa('✐'), 'class': 'toolbar-button', id: 'button-change', title: btoa('編集')
+		}, toolbar);
+		
+		var button_optimize = this.createNode('button', {
+			':context': btoa('⚙'), 'class': 'toolbar-button', id: 'button-optimize', title: btoa('最適化')
+		}, toolbar);
+		
+		
+		//ツールバーのイベントを追加
+		button_change.addEventListener('click', function(event){
+			event.stopPropagation();
+			that.changeFilter(event);
+		}, false);
+		button_delete.addEventListener('click', function(event){
+			event.stopPropagation();
+			that.deleteFilter(event);
+		}, false);
+		button_add.addEventListener('click', function(event){
+			event.stopPropagation();
+			that.addFilter(event);
+		}, false);
+		button_optimize.addEventListener('click', function(event){
+			event.stopPropagation();
+			that.optimize(event);
+		}, false);
+	},
+	
+	/**
+	 * 表示を更新する
+	 */
+	update: function(){
+		
+		['blackList', 'whiteList'].forEach(function(listType){
+
+			var container = this.doc.querySelector('#' + listType + ' > .list-table-container');
+			
+			while(container.hasChildNodes()){
+				container.removeChild(container.firstChild);
+			}
+			
+			adblockSharp[listType].types.forEach(function(typeObj, typeIndex){
+			
+				this.createNode('hr', null, container);
+				this.createNode('h2', { ':context': btoa(typeObj.name_ja) }, container);
+				
+				//この種類のフィルタがないとき
+				if(!typeObj.list.length){
+					this.createNode('p', { ':context': 'No Filters.' }, container);
+					return;
+				}
+				
+				//table
+				var table = this.createNode('table', { 'class': 'list-table', id: 'list-table-' + typeIndex }, container);
+				var tbody = this.createNode('tbody', null, table);
+				
+				//header
+				var htr = this.createNode('tr', { 'class': 'header' }, tbody);
+				
+				this.createNode('td', { ':context': 'Filter' }, htr);
+				this.createNode('td', { ':context': 'Count' }, htr);
+				this.createNode('td', { ':context': 'Latest Hit Date' }, htr);
+				
+				//Filter lists
+				typeObj.list.forEach(function(filter, index){
+				
+					filter = typeObj.toString(filter);
+					
+					var history = adblockSharp[listType].history[filter];
+					
+					if(history){
+						var tr = this.createNode('tr', { contextmenu: 'extra-context-menu', 'class': 'filter-' + index }, tbody);
+						
+						this.createNode('td', { ':context': filter }, tr);
+						this.createNode('td', { ':context': history.count, 'style': 'text-align: right;' }, tr);
+						this.createNode('td', { ':context': formatDate(history.date) }, tr);
+					}else{
+						var tr = this.createNode('tr', { contextmenu: 'extra-context-menu', 'class': 'filter-' + index }, tbody);
+						
+						this.createNode('td', { ':context': filter }, tr);
+						this.createNode('td', { ':context': '0', 'style': 'text-align: right;' }, tr);
+						this.createNode('td', null, tr);
+					}
+					
+				}, this);
+			
+			}, this);
+			
+			//イベントの設定
+			var that = this;
+			var rows = Array.slice(this.doc.querySelectorAll('#' + listType + ' tr[contextmenu]'));
+			rows.forEach(function(row){
+				row.addEventListener('mousedown', function(event){ that.select(event) }, false);
+				row.addEventListener('dblclick', function(event){ that.changeFilter(event) }, false);
+			}, this);
+		}, this);
+	
+	},
+	
+	
+	select: function(event){
+		event.stopPropagation();
+		
+		if(event.target.nodeName.toLowerCase() !== 'td') return;
+		
+		event.preventDefault();
+		
+		//Ctrl, Shift, Meta(Command)キーが押されていなければ、他の選択状態をクリア
+		if(!event.ctrlKey && !event.shiftKey && !event.metaKey && event.button === 0){
+			this._clearSelection();
+		}
+		
+		//対象の要素の選択状態をトグルする
+		if(event.button === 0) event.currentTarget.classList.toggle('selected');
+		else event.currentTarget.classList.add('selected');
+		
+		//shiftキーの場合は、間の要素も選択状態にする
+		if(event.shiftKey && this._lastSelected && 
+		   this._lastSelected.parentNode.parentNode.id === event.currentTarget.parentNode.parentNode.id){
+			
+			var startNum = this._lastSelected.className.match(/-(\d+)\s*/)[1] - 0;
+			var endNum = event.currentTarget.className.match(/-(\d+)\s*/)[1] - 0;
+			
+			if(startNum > endNum) [startNum, endNum] = [endNum, startNum];
+			
+			//始点と終点の間に1つ以上の要素がある場合のみ
+			if(endNum > startNum + 1){
+				
+				for(let i = startNum+1; i < endNum; i++){
+				
+					var row = event.currentTarget.parentNode.getElementsByClassName('filter-' + i)[0];
+					row.classList.add('selected');
+				
+				}
+				
+			}
+		}
+		
+		//文字列選択の解除
+		this.win.getSelection().collapse(this.doc, 0);
+		
+		//shiftキー処理のために選択した要素を保存する
+		this._lastSelected = event.currentTarget;
+	},
+	
+	_clearSelection: function(){
+		var selected = Array.slice(this.doc.getElementsByClassName('selected'));
+		
+		selected.forEach(function(item){
+			item.classList.remove('selected');
+		});
+	},
+	
+	deleteFilter: function(event){
+		var selected = Array.slice(this.doc.getElementsByClassName('selected'));
+		
+		if(!selected.length) return this.dialog(btoa('項目を選択して下さい.'));
+		
+		var content = selected[0].firstChild.textContent +
+			( (selected.length > 1) ? ' とその他' + (selected.length - 1) + '個のフィルター' : ' ' ) + 
+			  'を本当に削除しますか？';
+		
+		//削除時にインデックスがずれるのを防ぐために、反転してインデックスが降順になるようにする
+		selected.reverse();
+		
+		this.dialog(btoa(content), function(){
+			selected.forEach(function(item){
+				var listType = this.win.location.href.match(/#([^#]+)$/)[1];
+				var filterType = item.parentNode.parentNode.id.match(/-(\d+)\s*/)[1] - 0;
+				var itemNum = item.className.match(/-(\d+)\s*/)[1] - 0;
+
+				adblockSharp[listType].delete(filterType, itemNum);
+				this.update();
+				
+			}, this);
+		});
+		
+		adblockSharp.save();
+	},
+	
+	changeFilter: function(event){
+		var selected;
+		
+		//ダブルクリックの時はイベントのターゲットを、
+		//そうでないとき（メニューから呼ばれた時）は選択されている項目を処理対象にする
+		if(event.type === 'dblclick'){
+			
+			selected = [event.currentTarget];
+		
+		}else{
+			selected = Array.slice(this.doc.getElementsByClassName('selected'));
+			
+			if(!selected.length) return this.dialog(btoa('項目を選択して下さい.'));
+			if(selected.length > 1) return this.dialog(btoa('2つ以上の項目の同時編集は出来ません.'));
+		}
+		
+		
+		var td = selected[0].firstChild;
+		var filter = td.textContent;
+		
+		if(!filter) return;
+		
+		//編集ボックスを作成
+		selected[0].setAttribute('data-filter-original', filter);
+		td.innerHTML = '';
+		var editbox = this.createNode('input', { 'type': 'text', 'class': 'filter-editbox', 'value': filter }, td);
+		
+		//エンターが押されたら編集状態を終了する
+		var that = this;
+		editbox.addEventListener('keydown', function(event){
+			if(event.keyCode !== 13) return;
+			
+			that._finishEditingFilter();
+		}, false);
+	},
+	
+	_finishEditingFilter: function(event){
+		var editing = Array.slice(this.doc.getElementsByClassName('filter-editbox'));
+		
+		editing.forEach(function(editbox){
+			var tr = editbox.parentNode.parentNode;
+			var td = editbox.parentNode;
+			var listType = this.win.location.href.match(/#([^#]+)$/)[1];
+			var filterType = tr.parentNode.parentNode.id.match(/-(\d+)\s*/)[1] - 0;
+			var itemNum = tr.className.match(/-(\d+)\s*/)[1] - 0;
+			var originalFilterStr = tr.getAttribute('data-filter-original');
+			
+			td.removeChild(editbox);
+			
+			if(originalFilterStr === editbox.value || /^\s*$/.test(editbox.value)){
+				td.appendChild(this.doc.createTextNode(originalFilterStr));
+			}else{
+				td.appendChild(this.doc.createTextNode(editbox.value));
+				
+				adblockSharp[listType].delete(filterType, itemNum);
+				adblockSharp[listType].add(editbox.value);
+			}
+		}, this);
+	},
+	
+	addFilter: function(event){
+		var content = btoa(<![CDATA[
+			以下に追加するフィルタを入力して下さい.<br />
+			<textarea class="dialog-textarea" rows="10" cols="80"></textarea><br />
+			<label><input type='checkbox' class='whitelist-without-atmark' /> @@なしでもホワイトリストとして処理する</label>
+		]]>.toString());
+		
+		this.dialog(content, function(dialog){
+			var inputData = dialog.getElementsByClassName("dialog-textarea")[0].value;
+			var forceWhitelist = dialog.getElementsByClassName('whitelist-without-atmark')[0].checked;
+		
+			var filtersToAdd = inputData.split(/[\n\r]/).filter(function(item){ return item.length || !item.search(/^[\n\r\s]*$/); });
+			
+			if(forceWhitelist){
+				filtersToAdd = filtersToAdd.map(function(item){
+					return (item.lastIndexOf('@@', 0) !== -1) ?
+								item.substring(2) :
+								item;
+				});
+				
+				adblockSharp.whiteList.add(filtersToAdd);
+			}else{
+				var blackList = filtersToAdd.filter(function(item){
+					return item.lastIndexOf('@@', 0) === -1;
+				});
+				
+				var whiteList = filtersToAdd.filter(function(item){
+					return item.lastIndexOf('@@', 0) !== -1;
+				}).map(function(item){
+					return item.substring(2);
+				});
+				
+				adblockSharp.blackList.add(blackList);
+				adblockSharp.whiteList.add(whiteList);
+			}
+			
+			this.update();
+		});
+	},
+	
+	optimize: function(){
+		adblockSharp.blackList.optimize();
+		adblockSharp.whiteList.optimize();
+		this.update();
+		adblockSharp.save();
+	},
+	
+	applyPreference: function(){
+		var prefs = Array.slice(this.doc.querySelectorAll('[id^="pref-"]'));
+		
+		prefs.forEach(function(pref){
+			var key = pref.id.replace('pref-', '');
+			
+			if(pref.type === 'checkbox')
+				setPref(key, pref.checked);
+			else
+				setPref(key, pref.value);
+		}, this);
+	},
+	
+	dialog: function(mes, okCallback, ngCallback){
+		//wrapperを表示させる
+		var wrapper = this.$('dialog-wrapper');
+		wrapper.style.display = 'block';
+		wrapper.style.width = this.win.innerWidth + 'px';
+		wrapper.style.height = this.win.innerHeight + 'px';
+		
+		//dialogを作成する
+		var dialog = this.createNode('div', { 'class': 'dialog' }, wrapper);
+		
+		//内容を追加
+		this.createNode('div', { 'class': 'dialog-message-container', ':child': mes }, dialog);
+		
+		//Cancel, OKボタンを追加
+		var buttonWrapper = this.createNode('div', { 'class': 'dialog-button-wrapper' }, dialog);
+		var cancel = this.createNode('button', { 'class': 'dialog-button', ':context': btoa('Cancel') }, buttonWrapper);
+		var ok = this.createNode('button', { 'class': 'dialog-button', ':context': 'OK' }, buttonWrapper);
+		
+		var that = this;
+		
+		cancel.addEventListener('click', function(){
+			wrapper.removeChild(dialog);
+			wrapper.style.display = 'none';
+			
+			if(ngCallback) ngCallback.call(that, dialog);
+		}, false);
+		
+		ok.addEventListener('click', function(){
+			wrapper.removeChild(dialog);
+			wrapper.style.display = 'none';
+			
+			if(okCallback) okCallback.call(that, dialog);
+		}, false);
+		
+		//大きさを適切なサイズに変更する
+		var div = this.createNode('div', { ':child': mes, 'class': 'dialog-size-judgement' }, this.doc.body);
+		var rect = div.getBoundingClientRect();
+		var width = rect.right - rect.left;
+		var height = rect.bottom - rect.top;
+		
+		dialog.style.width = width + 'px';
+		dialog.style.height = height + 'px';
+		
+		this.doc.body.removeChild(div);
+		
+		//中央に表示させる
+		dialog.style.top = (this.win.innerHeight / 2 - height / 2) + 'px';
+		dialog.style.left = (this.win.innerWidth / 2 - width / 2) + 'px';
+	},
+	
 };
 
 
 adblockSharp.observer = {
+	
+	/**
+	 * observerを登録する
+	 */
 	start: function(){
-		var isExistsObserver = window.globalStorage['adblockSharp.started'].getItem('isExistsObserver');
+		var isExistsObserver = getPref('observerStarted');
+		
 		if(!isExistsObserver){
-			this.observer = Components.classes['@mozilla.org/observer-service;1'].getService(Components.interfaces.nsIObserverService);
+			this.observer = Cc['@mozilla.org/observer-service;1'].getService(Ci.nsIObserverService);
 			this.observer.addObserver(this, 'http-on-modify-request', false);
-			window.globalStorage['adblockSharp.started'].setItem('isExistsObserver', 'true');
-			adblockSharp.debug('Start observer');
+			setPref('observerStarted', true);
+			log('Start observer');
 		}
 	},
 
+	
+	/**
+	 * observerをストップする
+	 * その際他のウィンドウがあるならそこにobserverを委託する
+	 * ウィンドウが閉じられるときに呼び出される
+	 */
 	stop: function(){
-		var wm = Components.classes["@mozilla.org/appshell/window-mediator;1"]
-							.getService(Components.interfaces.nsIWindowMediator);
+		var wm = Cc["@mozilla.org/appshell/window-mediator;1"].getService(Ci.nsIWindowMediator);
 		var mainWindow = wm.getMostRecentWindow("navigator:browser");
 
 		var enumerator = wm.getEnumerator('navigator:browser');
 		var isLastWindow = !enumerator.hasMoreElements();
 
-		if(this.observer || isLastWindow){
-			window.globalStorage['adblockSharp.started'].removeItem('isExistsObserver');
-			var observer = Components.classes['@mozilla.org/observer-service;1'].getService(Components.interfaces.nsIObserverService);
-			observer.removeObserver(this, 'http-on-modify-request');
-
-			adblockSharp.debug('Remove observer');
+		//このウィンドウにobserverがあるならobserverを削除する
+		if(this.observer){
+			//remove observer
+			this.observer.removeObserver(this, 'http-on-modify-request');
+			log('Remove observer');
+			setPref('observerStarted', false);
 	
+			//もし他のウィンドウがあるなら, そのウィンドウにobserverを委託する
 			if(!isLastWindow && mainWindow && mainWindow.adblockSharp){
 				mainWindow.adblockSharp.observer.start();
 			}
@@ -797,23 +1706,101 @@ adblockSharp.observer = {
 	observe: function(subject, topic, data){
 		if(topic !== 'http-on-modify-request' || !adblockSharp.enabled) return;
 
-//		var start = (new Date()).getTime();
-
-		var http = subject.QueryInterface(Components.interfaces.nsIHttpChannel)
-		http = http.QueryInterface(Components.interfaces.nsIRequest);
+		var http = subject.QueryInterface(Ci.nsIHttpChannel)
+		http = http.QueryInterface(Ci.nsIRequest);
 
 		var url = http.URI.spec;
-		var filterManager = adblockSharp.filterManager;
+		var win = this.getRequesterWindow(http);
 
-		if( !filterManager.matchesAny(url, filterManager.whiteList) && 
-			 filterManager.matchesAny(url, filterManager.blackList)   ){
-				http.cancel(Components.results.NS_ERROR_FAILURE);
+		if( !adblockSharp.whiteList.match(url, win) && 
+			 adblockSharp.blackList.match(url, win)    ){
+				http.cancel(Cr.NS_ERROR_FAILURE);
 		}
-
-//		adblockSharp.debug(((new Date()).getTime() - start) + 'ms');
-	}
+	},
+	
+	getRequesterWindow: function(aRequest){
+		if(aRequest.notificationCallbacks){
+			try{
+				return aRequest.notificationCallbacks.getInterface(Ci.nsILoadContext).associatedWindow;
+			}catch(ex){}
+		}
+		
+		if(aRequest.loadGroup && aRequest.loadGroup.notificationCallbacks){
+			try{
+				return aRequest.loadGroup.notificationCallbacks.getInterface(Ci.nsILoadContext).associatedWindow;
+			}catch(ex){}
+		}
+		
+		return null;
+	},
 };
 
 
+function log(){
+	var args = Array.slice(arguments);
+	args.unshift('[adblock#]');
+	
+	Application.console.log(args.join(' '));
+}
+
+function formatDate(time){
+	var f = function(n){
+		return String(n).length == 1 ? '0' + n : n;
+	}
+	
+	var date = new Date(time);
+//	return date.toLocaleString();
+	return date.getFullYear() + '/' + f(date.getMonth() + 1) + '/' + f(date.getDate()) + ' ' + 
+			f(date.getHours()) + ":" + f(date.getMinutes()) + ":" + f(date.getSeconds()); 
+}
+
+function btoa(octets){
+	return decodeURIComponent(escape(octets));
+}
+
+function setPref(key, value){
+	var type = typeof value;
+	
+	switch(type){
+	
+		case 'string':
+			return pref.setCharPref(key, value);
+			
+		case 'number':
+			return pref.setIntPref(key, Math.floor(value));
+			
+		case 'boolean':
+			return pref.setBoolPref(key, value);
+			
+		default:
+			log('fail to set preference:', key, JSON.stringify(value));
+			return;
+	}
+}
+
+function getPref(key){
+	var type = pref.getPrefType(key);
+	
+	switch(type){
+	
+		case pref.PREF_STRING:
+			return pref.getCharPref(key);
+			
+		case pref.PREF_INT:
+			return pref.getIntPref(key);
+			
+		case pref.PREF_BOOL:
+			return pref.getBoolPref(key);
+			
+		case pref.PREF_INVALID:
+			return null;
+			
+		default:
+			return null;
+	}
+}
+
+})();
+
+
 adblockSharp.init();
-window.addEventListener("unload", function(event){ adblockSharp.uninit(event); }, false);

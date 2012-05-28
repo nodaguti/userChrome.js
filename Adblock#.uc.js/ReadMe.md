@@ -1,6 +1,19 @@
 adblock#.uc.js
 ==============
 
+## Firefox 13以降をお使いの方へ
+
+   Firefox 13でGlobal Storageが削除された影響で, 10/12/30 18:30 から 11/01/30 07:30 のバージョンを使っている場合<br />
+   Firefox 13以降でadblock#.uc.jsが動作しなくなります.
+   
+   その際, フィルタデータの引き継ぎも出来ませんので, もしFirefox 13にアップデートしてしまった場合には, 一度[こちら](https://ftp.mozilla.org/pub/mozilla.org/firefox/releases/)より
+   Firefox 12をダウンロードした上で, Firefox 12を起動して下さい.<br />
+   一度Firefox 12で起動すれば自動でデータが引き継がれますので, adblock#.jsonがプロファイルフォルダのchromeフォルダ内にできていることを確認した上で
+   Firefox 12を終了して下さい.
+   
+   そのあとはFirefox 13をお使いいただいても大丈夫です.
+   
+
 ## 概要
 
    Adblock Plus（以下ABP）の劣化版.<br />
@@ -12,7 +25,7 @@ adblock#.uc.js
 ## フィルタについて
 
    ABPのフィルタと基本的には同じだが, 一部非互換/未実装部分がある.<br />
-   同梱の adblock#.uc.js用変換ツール.html で変換できる(不完全).<br />
+   同梱の adblock#.uc.js用リスト変換ツール.html で変換できる(不完全).<br />
    フィルタは 単純文字列 > アスタリスク > 正規表現の順で遅くなる.<br />
    速度遅延を気にする人はできるだけ単純文字列で済ませられるようにフィルタを作るとよい（正規表現でまとめないでバラの単純文字列にする 等）.<br />
 
@@ -36,7 +49,7 @@ adblock#.uc.js
 
    * フィルタオプション(最後尾に$つけてファイルの種類などを指定するオプション)未対応
    * 「||」や「^」には未対応
-   * CSSによる要素非表示フィルタ未対応(対応予定無) -> 変換ツールで変換可能.
+   * CSSによる要素非表示フィルタ未対応(対応予定無) -> リスト変換ツールで変換可能.
    * フィルタの外部URL読み込み/自動更新未対応
 
 
@@ -45,7 +58,7 @@ adblock#.uc.js
    フィルタやマッチ履歴などのデータは プロファイルフォルダ/chrome/adblock#.json に保存される.<br />
    (chromeフォルダは, rebuild_userChrome.uc.xul を使っていれば 「ツール」->「userChrome.jsの設定」->「chromeフォルダを開く」より開くことができる)<br />
    スクリプトファイル内のfilter: 部分にフィルタを書く方式は廃止されたので,<br />
-   移行する場合には変換ツールを使って変換後, Filter Manager より追加すること.
+   移行する場合にはリスト変換ツールを使って変換後, Filter Manager より追加すること.
    
    10/12/30 18:30 以降のバージョンを使用していた場合には, フィルタのデータは Global Storageに保存されており,<br />
    Firefox12かそれよりも前のバージョンで実行した場合に限りデータは自動で引き継がれる.
@@ -124,7 +137,7 @@ adblock#.uc.js
    * 「||」や「^」はそれっぽいフィルタへと変換される.
       * オプションで正規表現を使って変換することができる. この場合ABPの「||」「^」とほとんど意味を変えることなく変換することが出来るが, 当然重くなる.
    * 要素非表示フィルタはCSSへと変換される.
-   * 要素非表示フィルタの簡略記法 (http://adblockplus.org/en/filters#elemhide_simplified) には未対応. http://d.hatena.ne.jp/k2jp/20090725/1248452268
+   * 要素非表示フィルタの簡略記法 (http://adblockplus.org/en/filters#elemhide_simplified) には未対応.
    * フィルタの重複は確認しない.
    * 一応 豆腐氏の Adblock Plus 日本向けフィルタ(http://blog-imgs-31-origin.fc2.com/t/o/f/tofukko/Adblock_Plus_list.txt) に載っているリストが大体変換されることを確認済.
 
@@ -152,6 +165,7 @@ adblock#.uc.js
 
 ## 更新履歴
 
+   * 12/05/28 21:00 Firefox 13対応
    * 11/01/30 07:30 Bug 623435 - Rip out deprecated |RegExp.compile| builtin method
    * 11/01/28 22:00 結果が正しく保存されないことがあるバグを修正
    * 11/01/25 19:00 マッチ時の処理を少し高速化
@@ -183,7 +197,7 @@ adblock#.uc.js
 
 ## ToDo
 
-   * adblock#.uc.js用変換ツール の変換精度向上
+   * adblock#.uc.js用リスト変換ツール の変換精度向上
    * $domain, $third-partyの実装
    * || の実装
    * ABP方式のホワイトリストの実装
