@@ -1,0 +1,258 @@
+<html>
+<head>
+<title>Adblock -> adblock#.uc.js</title>
+<style type="text/css">
+.logItem{
+	border: 2px #cccccc solid;
+	margin-bottom: 1em;
+	background-color: skyblue;
+}
+
+.logItemTime{
+	display: inline-block;
+}
+
+.logtype{
+	margin-left: 0.5em;
+	display: inline-block;
+	font-weight: bolder;
+}
+.logtype:before{
+	content: "[";
+}
+.logtype:after{
+	content: "]";
+}
+
+.oldfilter{
+	display: block;
+	background-color: #dcdcdc;
+}
+
+.newfilter{
+	background-color: #c0c0c0;
+	display: block;
+}
+
+</style>
+</head>
+<body>
+本家Adblock/Adblock plus用リストをadblock#.uc.js用に暫定変換<br><br>
+
+変換元<br>
+<textarea style="width:50%;height:150px;" id="oldBlacklist"></textarea><br><br>
+
+変換後<br>
+<textarea style="width:50%;height:150px;" id="newBlacklist"></textarea><br><br>
+<input type="checkbox" id="filterKind" checked="checked">filter: 形式で書き出す</br>
+<input type="checkbox" id="starPref">「*」を含むフィルターを単純な文字列のフィルターに変換する<br>
+<div style="margin-left:3.5em; font-size: 90%;">
+(注意)<br>
+"http://*.exampletesthoge.co.jp/" -> ".exampletesthoge.co.jp/"<br>
+"http://*.examplehoge.co.jp/*.gif" -> ".examplehoge.co.jp/"<br>
+"http://*.examplehoge.*.jp/*.gif" -> "+http://*.examplehoge.*.jp/*.gif+"<br>
+のようになり, フィルタをほぼ同じ意味でより高速なものに変換することができますが,<br>
+自動変換なので誤変換を犯す可能性があります.<br>
+　　　※原則として「*」が2つまでのものは単純文字列に, それよりも多いものはアスタリスクフィルターとなります.<br>
+　　　※この方法で変換されたフィルターは誤変換検出を簡単にするためログに出力されます.<br>
+　　　　変換後は必ずログを確認して下さい.<br>
+　　　※2番目の例ではgifだけに限定するという意味が失われるため, <br>
+　　　　+http://*.examplehoge.co.jp/*.gif+としたほうが良い 等の誤変換が生じる恐れがあります.
+</div><br>
+
+<input type="button" value="変換" onclick="changeList();"><br><br>
+
+<script type="text/javascript">
+var logText = "";
+
+function log(str,old,after){
+	if(!(old || after)){
+		logText += "<div class=\"logItem\"><div class=\"logItemTime\">[" + (new Date()) + "]</div> " + str + '</div>';
+	}else{
+		logText += "<div class=\"logItem\"><div class=\"logItemTime\">[" + (new Date()) + "]</div>" + 
+					'<div class="logtype">'+str+'</div>' + 
+					'<div class="oldfilter">'+old+'</div>' + 
+					'<div class="newfilter">'+after+'</div>' +
+					'</div>';
+	}
+}
+
+function showLog(){
+	var range = document.createRange();
+	var documentFragment = range.createContextualFragment(logText);
+	document.getElementById("log").appendChild(documentFragment);
+	logText = "";
+}
+
+function changeList(){
+	var startTime = (new Date()).getTime();
+	var old = document.getElementById("oldBlacklist").value;
+	var newList = document.getElementById("newBlacklist");
+
+	var lists = old.split('\n'),l=lists.length;
+	for(var i=0; i<l; i++){
+		var list = lists[i];
+
+		//出力ファイルの先頭文字列は変換しない
+		if(list.indexOf("[Adblock") > -1){
+			lists[i] = '';
+			continue;
+		}
+
+		//コメントをJavaScriptのコメントへ変換
+		if($ = list.match(/^\-\-(.*)$/)){
+			lists[i] = '//' + $[1];
+			continue;
+		}
+		if($ = list.match(/^!(.*)$/)){
+			lists[i] = '//' + $[1];
+			continue;
+		}
+
+		//フォルタオプションは削除(ログ出力)
+		if(list.match(/\$[^$]+$/)){
+			var tmp = list;
+			list = list.replace(/\$[^$]+$/,'');
+			log("FilterOptionDeleted",tmp,list);
+		}
+
+		//ホワイトリストはそのまま
+		if(list.match(/^@@.*$/)){
+			lists[i] = list;
+			continue;
+		}
+
+		//前方一致/後方一致はそのまま
+		if(list.indexOf("|") == 0 || list.indexOf("|") == list.length-1){
+			lists[i] = list;
+			continue;
+		}
+
+		//正規表現を用いたものはそのまま
+		if(list.match(/^\/.*\/$/)){
+			lists[i] = list;
+			continue;
+		}
+
+		//()を用いたものは正規表現に
+		if(list.match(/\(.*\|.*\)/)){
+			list = list.replace(/\\/g, '\\\\')
+						.replace(/\+/g, '\\+')
+						.replace(/\./g, '\\.')
+						.replace(/\?/g, '\\?')
+						.replace(/\{/g, '\\{')
+						.replace(/\}/g, '\\}')
+						.replace(/\[/g, '\\[')
+						.replace(/\]/g, '\\]')
+						.replace(/\^/g, '\\^')
+						.replace(/\$/g, '\\$')
+						.replace(/\//g, '\\/');
+			lists[i] = "/" + list + "/";
+			continue;
+		}
+
+		//*が/の両側に使われているものはそのまま
+		if($ = list.match(/^\*\/(.*)\/\*$/)){
+			lists[i] = list;
+			continue;
+		}
+
+		//*が/の片側一方にあるものは*を補う
+		if($ = list.match(/^\*\/(.*)\/$/)){
+			lists[i] = "*/" + $[1] + "/*";
+			continue;
+		}
+		if($ = list.match(/^\/(.*)\/\*$/)){
+			lists[i] = "*/" + $[1] + "/*";
+			continue;
+		}
+
+		//その他*が両側に使われているものは*を取り除くだけ
+		if($ = list.match(/^\*(.*)\*$/)){
+			lists[i] = $[1];
+			continue;
+		}
+
+		//*が途中で使われている場合は設定によって分岐
+		if(document.getElementById('starPref').checked){
+			//*が3つ以上ある場合は+で括る
+			if(list.split('*').length > 3){
+				lists[i] = "+" + list + "+";
+				continue;
+			}
+
+			//*2つで囲まれている部分がある場合は
+			//その部分がフィルター全体の半分より長い時はその部分を抜き出し、
+			//短い場合は+で括る
+			if($ = list.match(/\*(.*)?\*/)){
+				if($[1].length > list.length/2)
+					lists[i] = $[1];
+				else
+					lists[i] = "+" + list + "+";
+				log("StarFilterChanged",list,lists[i]);
+				continue;
+			}
+
+			//*が１つしかない場合は*以前または以降を取り除く
+			var start = list.indexOf('*');
+			if(start > -1){
+				lists[i] = start >= list.length/2 ? list.substring(0, start) : list.substring(start+1);
+				log("StarFilterChanged",list,lists[i]);
+				continue;
+			}
+		}else{
+			//*が使われているものは全て+で括る
+			if(list.indexOf('*') > -1){
+				lists[i] = "+" + list + "+";
+				continue;
+			}
+		}
+
+		//それ以外はすべて普通の文字列なのでそのままにしておく
+		lists[i] = list;
+	}
+
+
+	//出力
+	if(document.getElementById('filterKind').checked){
+		var outputStr = 'filter: [\n';
+		for(var i=0; i<l; i++){
+			//コメント行はそのまま
+			if(lists[i].indexOf("//") == 0){
+				outputStr += lists[i] + "\n";
+				continue;
+			}
+	
+			//空行は飛ばす
+			if(lists[i].length <= 0)
+				continue;
+	
+			outputStr += "'" + lists[i] + "',\n";
+		}
+		outputStr += "\n],";
+	}else{
+		var outputStr = '';
+		for(var i=0; i<l; i++){
+			//コメント行は飛ばす
+			if(lists[i].indexOf("//") === 0)
+				continue;
+	
+			//空行は飛ばす
+			if(lists[i].length <= 0)
+				continue;
+	
+			outputStr += lists[i] + "\n";
+		}
+	}
+
+	newList.value = outputStr;
+	var endTime = (new Date()).getTime();
+	log(((endTime-startTime)/1000)+" sec.");
+	showLog();
+}
+</script>
+
+変換ログ:<br>
+<div id="log"></div>
+</body>
+</html>
