@@ -111,22 +111,12 @@ adblock#.uc.js
 
    他の広告ブロック拡張などのフィルターをadblock#.uc.js用フィルターへと変換するスクリプト.
 
-   [使い方]
+### 使い方
    
-   1. 変換元のリストを「変換元」にコピペする.
-        ※変換元リストの入手方法
-          * Adblock plus
-            1. Adblock Plusの設定画面を開く
-            2. 「フィルタ」->「フィルタのエクスポート」を選択する
-            3. フィルタがテキスト形式で保存されるのでそのファイルの内容をコピペすれば良い
-
-          * Adblock++
-            1. about:config を開く
-            2. extensions.adblock++.filter_array をコピペすれば良い
-            
-   2. 「変換」を押すと「変換後」の所に変換されたものが出てくる.
-      「フィルター」の所に出力されたものは,Filter Managerで追加すれば良い.
-      また, 「CSS」の所に出力されたものは, 要素非表示フィルターをCSSへと変換したものなので,
+   1. 変換元のリストを「変換元」にコピペする. 変換元リストの入手方法については下記を参照のこと.
+   2. 「変換」を押すと「変換後」の所に変換されたものが出てくる.<br />
+      「フィルター」の所に出力されたものは,Filter Managerで追加すれば良い.<br />
+      また, 「CSS」の所に出力されたものは, 要素非表示フィルターをCSSへと変換したものなので,<br />
       そのまま Stylish または userContent.css へと追加すれば良い.
 
    * 大方のフィルタに対応済みだがたまに誤爆することも.
@@ -137,6 +127,19 @@ adblock#.uc.js
    * 要素非表示フィルタの簡略記法 (http://adblockplus.org/en/filters#elemhide_simplified) には未対応. http://d.hatena.ne.jp/k2jp/20090725/1248452268
    * フィルタの重複は確認しない.
    * 一応 豆腐氏の Adblock Plus 日本向けフィルタ(http://blog-imgs-31-origin.fc2.com/t/o/f/tofukko/Adblock_Plus_list.txt) に載っているリストが大体変換されることを確認済.
+
+### 変換元リストの入手方法
+		
+#### Adblock plus
+
+ 1. Adblock Plusの設定画面を開く
+ 2. 「フィルタ」->「フィルタのエクスポート」を選択する
+ 3. フィルタがテキスト形式で保存されるのでそのファイルの内容をコピペすれば良い
+
+#### Adblock++
+		  
+ 1. about:config を開く
+ 2. extensions.adblock++.filter_array をコピペすれば良い
 
 
 ## 注意
