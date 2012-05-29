@@ -60,12 +60,13 @@ adblock#.uc.js
 ## フィルタデータとその保存場所について
 
    フィルタやマッチ履歴などのデータは プロファイルフォルダ/chrome/adblock#.json に保存される.<br />
-   (chromeフォルダは, rebuild_userChrome.uc.xul を使っていれば 「ツール」->「userChrome.jsの設定」->「chromeフォルダを開く」より開くことができる)<br />
+   (chromeフォルダは, [rebuild_userChrome.uc.xul](https://github.com/alice0775/userChrome.js/blob/master/rebuild_userChrome.uc.xul)
+   を使っていれば 「ツール」->「userChrome.jsの設定」->「chromeフォルダを開く」より開くことができる)<br />
    スクリプトファイル内のfilter: 部分にフィルタを書く方式は廃止されたので,<br />
    移行する場合にはリスト変換ツールを使って変換後, Filter Manager より追加すること.
    
    10/12/30 18:30 以降のバージョンを使用していた場合には, フィルタのデータは Global Storageに保存されており,<br />
-   Firefox12かそれよりも前のバージョンで実行した場合に限りデータは自動で引き継がれる.
+   Firefox 12 かそれよりも前のバージョンで実行した場合に限りデータは自動で引き継がれる.
 
 
 ## adblock#.uc.js Filter Managerについて
@@ -81,7 +82,7 @@ adblock#.uc.js
    すべて左下のボタンで操作することになる(のちのち改善予定).
 
    Black Listにはブラックリストが, White Listにはホワイトリストが表示される.<br />
-   表示上ホワイトリストの先頭に@@がついていないのでブラックリストと混同しないよう注意.
+   表示の都合上, ホワイトリストの先頭に@@がついていないのでブラックリストと混同しないよう注意.
 
    以下各機能について解説 (括弧内は左下のボタンを表す)
    
