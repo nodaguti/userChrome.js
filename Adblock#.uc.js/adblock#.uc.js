@@ -5,8 +5,10 @@
 // @author      nodaguti
 // @license     MIT License
 // @compatibility Firefox 3.6 - Firefox 13
+// @version     12/05/29 21:30 Firefox 13でFilter Managerが正常に動作しないバグを修正
+// ==/UserScript==
 // @version     12/05/28 21:00 Firefox 13対応
-// @note        [更新内容]
+// @note        (12/05/28 21:00 の更新内容の詳細)
 //                 - Firefox 13対応
 //                 - filter: を廃止
 //                 - フィルタのデータをchromeフォルダ内のadblock#.jsonに保存するようにした
@@ -19,7 +21,6 @@
 //                 - 単純文字列の前方一致/後方一致フィルタがある場合にFilter Managerが正しく起動できないバグを修正
 //                 - 特定の文字列が含まれるフィルタを追加するとFilter Managerが正しく起動できなくなるバグを修正
 //                 - 正しく履歴が保存できないことがあるバグを修正
-// ==/UserScript==
 // @version     11/01/30 07:30 Bug 623435 - Rip out deprecated |RegExp.compile| builtin method
 // @version     11/01/28 22:00 結果が正しく保存されないことがあるバグを修正
 // @version     11/01/25 19:00 マッチ時の処理を少し高速化
@@ -918,6 +919,7 @@ adblockSharp.filterManager = {
 					display: block;
 					padding: 0.5em;
 					padding-right: 1.2em;
+					cursor: pointer;      /* for Firefox 3.6 */
 				}
 				#menu a:hover{
 					background-color: #b8baff;
@@ -1248,12 +1250,18 @@ adblockSharp.filterManager = {
 		}, false);
 		
 		//Firefox3.6でdata URI中でlocation.hashが動かないことへの対策
-		var tabs = Array.slice(this.doc.querySelectorAll('#menu > li > a'));
-		tabs.forEach(function(tab){
-			tab.addEventListener('click', function(event){
-				that.win.location.href = that.win.location.href.replace(/#\w+?$/, tab.href);
-			}, false);
-		});
+		//もしかしたらFirefox4-11にも同様のバグがあるかもしれないが, 自動アップデートにより
+		//すくなくともFirefox12にはアップデートされているはずなのでとりあえずFirefox3.6のみを対象にする
+		var geckoVersion = Cc["@mozilla.org/xre/app-info;1"].getService(Ci.nsIXULAppInfo).platformVersion;
+		
+		if(geckoVersion.indexOf('1.9.2') !== -1){
+			var tabs = Array.slice(this.doc.querySelectorAll('#menu > li > a'));
+			tabs.forEach(function(tab){
+				tab.addEventListener('click', function(event){
+					that.win.location.href = that.win.location.href.replace(/#\w+?$/, tab.href);
+				}, false);
+			});
+		}
 		
 		//設定を反映させる
 		var prefs = Array.slice(this.doc.querySelectorAll('[id^="pref-"]'));

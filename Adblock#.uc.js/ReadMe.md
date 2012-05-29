@@ -21,6 +21,10 @@ adblock#.uc.js
    ブロックしたURLはエラーコンソールに出力される.<br />
    コードの汚さ/起動などにかかる時間を犠牲にしてでもマッチ処理を速くすることを基本方針としている.
 
+   本スクリプトはFirefox 3.6 - Firefox 13対応としているが, 基本的にFirefox 3.6.28, Firefox 10 ESR, 最新安定版(Releaseチャンネル)のFirefox,
+   最新のFirefox Beta(Betaチャンネル), 最新のFirefox Aurora(Auroraチャンネル)で動作を確認しているので, それ以外のバージョン(Firefox 7など)では動かない可能性がある.<br />
+   また, Nightly, Auroraでのみ発生するバグについては対応が遅れる可能性があるのでご了承下さい.
+
 
 ## フィルタについて
 
@@ -167,6 +171,7 @@ adblock#.uc.js
 
 ## 更新履歴
 
+   * 12/05/29 21:30 Firefox 13でFilter Managerが正常に動作しないバグを修正
    * 12/05/28 21:00 Firefox 13対応
    * 11/01/30 07:30 Bug 623435 - Rip out deprecated |RegExp.compile| builtin method
    * 11/01/28 22:00 結果が正しく保存されないことがあるバグを修正
