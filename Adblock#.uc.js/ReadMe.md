@@ -171,6 +171,7 @@ adblock#.uc.js
 
 ## 更新履歴
 
+   * 12/05/29 22:00 Global Storageの履歴データが壊れていると正しくデータが引き継がれなくなるバグを修正
    * 12/05/29 21:30 Firefox 13でFilter Managerが正常に動作しないバグを修正
    * 12/05/28 21:00 Firefox 13対応
    * 11/01/30 07:30 Bug 623435 - Rip out deprecated |RegExp.compile| builtin method

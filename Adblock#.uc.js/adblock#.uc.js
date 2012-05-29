@@ -5,8 +5,9 @@
 // @author      nodaguti
 // @license     MIT License
 // @compatibility Firefox 3.6 - Firefox 13
-// @version     12/05/29 21:30 Firefox 13でFilter Managerが正常に動作しないバグを修正
+// @version     12/05/29 22:00 Global Storageの履歴データが壊れていると正しくデータが引き継がれなくなるバグを修正
 // ==/UserScript==
+// @version     12/05/29 21:30 Firefox 13でFilter Managerが正常に動作しないバグを修正
 // @version     12/05/28 21:00 Firefox 13対応
 // @note        (12/05/28 21:00 の更新内容の詳細)
 //                 - Firefox 13対応
@@ -252,7 +253,7 @@ window.adblockSharp = {
 			for(var type in listObj){
 				
 				listObj[type].forEach(function(filter){
-				
+					
 					switch(type){
 					
 						case 'plainTextFilter':
@@ -261,7 +262,12 @@ window.adblockSharp = {
 							var typeObj = this[listType]._getTypeObjByName(type.replace('Filter', ''));
 							typeObj.list.push(filter);
 							
-							this[listType].history[typeObj.toString(filter)] = JSON.parse(storage.result.getItem(filter));
+							try{
+								this[listType].history[typeObj.toString(filter)] = JSON.parse(storage.result.getItem(filter));
+							}catch(e){
+								//履歴データが壊れている時
+								this[listType].history[typeObj.toString(filter)] = null;
+							}
 							break;
 					
 						case 'prefixSuffixFilter':
@@ -272,7 +278,11 @@ window.adblockSharp = {
 								
 							typeObj.list.push(filter[1]);
 							
-							this[listType].history[typeObj.toString(filter[1])] = JSON.parse(storage.result.getItem(filter[1]));
+							try{
+								this[listType].history[typeObj.toString(filter[1])] = JSON.parse(storage.result.getItem(filter[1]));
+							}catch(e){
+								this[listType].history[typeObj.toString(filter[1])] = null;
+							}
 							break;
 							
 						case 'regExpFilter':
@@ -280,7 +290,11 @@ window.adblockSharp = {
 							
 							typeObj.list.push(new RegExp(filter.slice(1, filter.length-1)));
 							
-							this[listType].history[filter] = JSON.parse(storage.result.getItem(String(filter)));
+							try{
+								this[listType].history[filter] = JSON.parse(storage.result.getItem(String(filter)));
+							}catch(e){
+								this[listType].history[filter] = null;
+							}
 							break;
 							
 					}
