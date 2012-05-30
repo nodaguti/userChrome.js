@@ -4,11 +4,12 @@ adblock#.uc.js
 ## Firefox 13以降をお使いの方へ
 
    Firefox 13でGlobal Storageが削除された影響で, 10/12/30 18:30 から 11/01/30 07:30 のバージョンを使っている場合<br />
-   Firefox 13以降でadblock#.uc.jsが動作しなくなります.
+   Firefox 13以降でadblock#.uc.jsが動作しなくなります(フィルタデータにアクセスできなくなるため).
    
-   その際, フィルタデータの引き継ぎも出来ませんので, もしFirefox 13にアップデートしてしまった場合には, 一度[こちら](https://ftp.mozilla.org/pub/mozilla.org/firefox/releases/)より
-   Firefox 12をダウンロードした上で, Firefox 12を起動して下さい.<br />
-   一度Firefox 12で起動すれば自動でデータが引き継がれますので, adblock#.jsonがプロファイルフォルダのchromeフォルダ内にできていることを確認した上で
+   その際, Firefox 13以降をお使いのままadblock#.uc.jsを最新版へと更新しても, フィルタデータの引き継ぎはできませんので,<br />
+   もしFirefox 13にアップデートしてしまった場合には, 一度[こちら](https://ftp.mozilla.org/pub/mozilla.org/firefox/releases/)より
+   Firefox 12をダウンロードし, Firefox 12を起動して下さい.<br />
+   一度Firefox 12を起動すれば自動でデータがGlobal Storageより引き継がれますので, adblock#.jsonがプロファイルフォルダのchromeフォルダ内にできていることを確認した上で
    Firefox 12を終了して下さい.
    
    そのあとはFirefox 13をお使いいただいても大丈夫です.
