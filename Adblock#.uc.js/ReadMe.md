@@ -208,6 +208,31 @@ Q. ホワイトリストがAdblock Plusと違う動作をする気がする
 A. Adblock Plusには @@|http://example.com のように http:// または https:// から始まるホワイトリストを書くと, そのフィルターにマッチしたURLをブロックしないのではなく,<br />
    そのフィルターにマッチするURLの *ページ全体* でブロック機能を一時的にOFFするという機能がありますが, adblock#.uc.jsは現在この機能には未対応です.<br />
    混乱を招く可能性があるので, 今後オプションとして実装予定です.
+   
+Q. 「ブロックした要素を隠す」機能がほしい
+A. 以下のCSSをユーザースタイルシートとして読み込ませることで, ブロックした要素, すなわちURLが空白になっている要素を隠すことができます.<br />
+   ただし, iframeの方は誤爆も結構多いので, 例のように個別に対処するか, iframeの方は妥協するのも一つの手かと思います.
+   
+```CSS
+@namespace url(http://www.w3.org/1999/xhtml);
+
+/* ブロックしたiframeを隠す */
+iframe:not(src){
+   display: none !important;
+}
+
+/* ブロックした画像を隠す */
+img:not(src):-moz-broken{
+   display: none !important;
+}
+
+/* 誤爆するサイトへの対策 */
+@-moz-document url-prefix(https://mail.google.com/){
+   iframe:not(src){
+       display: block !important;
+   }
+}
+```
 
 Q. マッチ履歴とかいらないからもっと速くしろ
 
