@@ -5,8 +5,9 @@
 // @author      nodaguti
 // @license     MIT License
 // @compatibility Firefox 3.6 - Firefox 15
-// @version     12/07/14 12:30 Firefoxが強制終了した後に起動するとobserverの登録がされないバグを修正
+// @version     12/09/03 17:00 アスタリスクと前方一致を使ったフィルタが正しくマッチしないことがあるバグを修正
 // ==/UserScript==
+// @version     12/07/14 12:30 Firefoxが強制終了した後に起動するとobserverの登録がされないバグを修正
 // @version     12/05/29 22:00 Global Storageの履歴データが壊れていると正しくデータが引き継がれなくなるバグを修正
 // @version     12/05/29 21:30 Firefox 13でFilter Managerが正常に動作しないバグを修正
 // @version     12/05/28 21:00 Firefox 13対応
@@ -523,7 +524,7 @@ filterList.prototype = {
 							if(url.lastIndexOf(filter[0], 0) === -1) continue;
 							
 							//2番目以降
-							var lastMatch = 0,
+							var lastMatch = filter[0].length,
 								match = -1;
 					
 							for(let j=1, l=filter.length; j!==l; j++){
