@@ -8,12 +8,12 @@
 	height: 300px;
 	overflow: auto;
 	border: 1px #2f2f2f solid;
+	background-color: #fcfcfc;
 }
 
 .logItem{
-	border: 2px #cccccc solid;
 	margin-bottom: 1em;
-	background-color: skyblue;
+	background-color: orange;
 }
 
 .logItemTime{
@@ -88,6 +88,8 @@ function convertList(){
 	separatorCharacterToRegExp = $('separatorCharacterToRegExp').checked;
 	suppressLogs = $('suppressLogs').checked;
 	
+	log(originalType + '形式のフィルタを変換します...');
+	
 	//変換
 	//  _convertListFrom***（*** = チェックされたラジオボタンのvalue属性）という関数を,
 	//  入力された変換元データを改行で分けた配列を引数にして呼び出す.
@@ -131,7 +133,7 @@ function convertList(){
 		cssStr += '{\n   display: none !important;\n}\n';
 		
 		//除外ドメイン指定あり（除外ドメイン以外向けの記述）
-		cssStr += '\n/* For all sites except for certain domains */\n';
+		cssStr += '\n/* For all sites except for specific domains */\n';
 		
 		for(let i in css.excludeDomain){
 			if(!css.plain[i]){
@@ -142,7 +144,7 @@ function convertList(){
 		cssStr += '{\n   display: none !important;\n}';
 		
 		//ドメイン指定あり
-		cssStr += '\n/* For certain domains */\n';
+		cssStr += '\n/* For specific domains */\n';
 		
 		for(let i in css.domain){
 			if(css.plain[i]) continue;
@@ -160,7 +162,7 @@ function convertList(){
 		}
 		
 		//除外ドメイン指定あり（除外ドメイン向けの記述）
-		cssStr += '\n/* Not hiding elements from following domains */\n';
+		cssStr += '\n/* Don\'t hide elements from following domains */\n';
 		
 		for(let i in css.excludeDomain){
 			if(css.plain[i]) continue;
@@ -474,11 +476,11 @@ CSS:<br />
 
 <h2>Option</h2>
 変換元の種類: 
-<label><input type='radio' name='originalType' value="Adblock" />Adblock Plus </label>
+<label><input type='radio' name='originalType' value="Adblock" checked='checked' />Adblock Plus </label>
 <label><input type='radio' name='originalType' value='Adblock2' />Adblock++</label>
 <label><input type='radio' name='originalType' value="Filter" />filter: </label><br />
 <label><input type="checkbox" id="separatorCharacterToRegExp" /> 「^」(Separator Character)を正規表現に変換する (チェックしない場合「*」に変換されます)</label><br />
-<label><input type="checkbox" id="twoPipeToRegExp" /> 「||」を正規表現に変換する (チェックしない場合「||」は削除されます)</label><br />
+<label><input type="checkbox" id="twoPipeToRegExp" /> 「||」(beginning of the domain)を正規表現に変換する (チェックしない場合「||」は削除されます)</label><br />
 <label><input type="checkbox" id="convertIntoOldStyle" /> filter: 形式で書き出す (10/05/21 21:30 以前のバージョン向け)</label><br />
 <label><input type="checkbox" id="suppressLogs" checked="checked" /> ログの出力を抑制する</label><br /><br />
 
