@@ -244,6 +244,7 @@ A. Adblock Plusには @@|http://example.com のように http:// または https
    混乱を招く可能性があるので, 今後オプションとして実装予定です.
    
 Q. 「ブロックした要素を隠す」機能がほしい
+
 A. 以下のCSSをユーザースタイルシートとして読み込ませることで, ブロックした要素, すなわちURLが空白になっている要素を隠すことができます.  
    ただし, iframeの方は誤爆も結構多いので, 例のように個別に対処するか, iframeの方は妥協するのも一つの手かと思います.
    
@@ -270,7 +271,7 @@ img:not(src):-moz-broken{
 
 Q. バグを見つけた/要望がある
 
-A. 本ページ右上のIssuesより追加するか, [【CSS】Mozilla広告ブロック【Adblock】](http://find.2ch.net/?STR=Mozilla%B9%AD%B9%F0%A5%D6%A5%ED%A5%C3%A5%AF)に書き込んでいただければ対応します. もちろん[Twitter](http://www.twitter.com/nodaguti/)や[メール](mailto:nodaguti@gmail.com)でも構いません.
+A. 本ページ右上のIssuesより追加するか, [【CSS】Mozilla広告ブロック【Adblock】](http://find.2ch.net/?STR=Mozilla%B9%AD%B9%F0%A5%D6%A5%ED%A5%C3%A5%AF)に書き込んでいただければ対応します. もちろん[Twitter](http://www.twitter.com/nodaguti/)や[メール](mailto:nodaguti[at]GMail)でも構いません.
 
 
 ## 更新履歴
