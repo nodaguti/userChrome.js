@@ -63,16 +63,17 @@ function log(str,old,after){
 	}
 }
 
-function $(id){
-	return document.getElementById(id);
-}
-
 function showLog(){
 	var range = document.createRange();
 	var documentFragment = range.createContextualFragment(logText);
 	document.getElementById("log").appendChild(documentFragment);
 	logText = "";
 }
+
+function $(id){
+	return document.getElementById(id);
+}
+
 
 function convertList(){
 	var startTime = (new Date()).getTime();
@@ -210,7 +211,7 @@ function _convertListFromAdblock(lists){
 		}
 
 		//コメントは無視する
-		if(list.lastIndexOf('--', 0) !== -1 || list.lastIndexOf('!', 0) !== -1){
+		if(list.lastIndexOf('--', 0) !== -1 || list[0] === '!'){
 			continue;
 		}
 
@@ -253,7 +254,7 @@ function _convertListFromAdblock(lists){
 		
 		//正規表現を用いたものはそのまま
 		if(/^\/.*\/$/.test(list)){
-			_pushConvetedList(list);
+			_pushConvertedList(list);
 			continue;
 		}
 		
@@ -314,7 +315,7 @@ function _convertListFromAdblock(lists){
 		
 		//正規表現に変換したフィルタを追加する
 		if(convertToRegExp){
-			_pushConvetedList(list);
+			_pushConvertedList(list);
 			log('正規表現に変換しました', original, list);
 			continue;
 		}
@@ -342,10 +343,10 @@ function _convertListFromAdblock(lists){
 		}
 	
 		//listには変換済みのフィルタが入っているはず
-		_pushConvetedList(list);
+		_pushConvertedList(list);
 	}
 	
-	function _pushConvetedList(_list){
+	function _pushConvertedList(_list){
 		if(isWhiteList) _list = '@@' + _list;
 		convertedFilter.push(_list);
 	}
@@ -354,6 +355,7 @@ function _convertListFromAdblock(lists){
 }
 
 //Adblock++
+//based on adblock++からadblock#へ移行する | Web scratch - http://efcl.info/2011/0524/res2760/
 /**
 * Created by azu.
 * Date: 11/05/23 23:36
@@ -467,7 +469,7 @@ CSS:<br />
 <li>「変換ログ」を確認し, 変な変換がされていないかチェックします.</li>
 <li>「フィルター」に出力されたものはFilter Managerより追加して下さい.<br />
 「CSS」に出力されたものは, Adblock Plusなどの「要素非表示フィルタ」を変換したものです.<br />
-<a href="http://firefox.geckodev.org/index.php?cmd=read&page=usercontent.css" target='_blank'>userContent.css</a>や<a href="https://addons.mozilla.jp/firefox/details/2108">Stylish</a>に追加することで適用することができます.</li>
+<a href="http://firefox.geckodev.org/index.php?cmd=read&page=usercontent.css" target='_blank'>userContent.css</a>や<a href="https://addons.mozilla.jp/firefox/details/2108" target="_blank">Stylish</a>に追加することで適用することができます.</li>
 </ol>
 
 <h2>Option</h2>

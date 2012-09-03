@@ -4,9 +4,10 @@
 // @include     main
 // @author      nodaguti
 // @license     MIT License
-// @compatibility Firefox 3.6 - Firefox 13
-// @version     12/05/29 22:00 Global Storageの履歴データが壊れていると正しくデータが引き継がれなくなるバグを修正
+// @compatibility Firefox 3.6 - Firefox 15
+// @version     12/07/14 12:30 Firefoxが強制終了した後に起動するとobserverの登録がされないバグを修正
 // ==/UserScript==
+// @version     12/05/29 22:00 Global Storageの履歴データが壊れていると正しくデータが引き継がれなくなるバグを修正
 // @version     12/05/29 21:30 Firefox 13でFilter Managerが正常に動作しないバグを修正
 // @version     12/05/28 21:00 Firefox 13対応
 // @note        (12/05/28 21:00 の更新内容の詳細)
@@ -365,7 +366,7 @@ var filterList = function(){
 }
 
 filterList.prototype = {
-	
+
 	/**
 	 * 種類の名前からそのオブジェクト(typesにあるやつ)を取得する
 	 * @param {String} name name of type
@@ -390,6 +391,7 @@ filterList.prototype = {
 	},
 	
 	init: function(){
+
 		/**
 		 * フィルタのデータ
 		 *
@@ -397,14 +399,15 @@ filterList.prototype = {
 		 *    (String) name: フィルタの種類名
 		 *    (Boolean:Function) match(String:url) マッチ処理を行う関数 マッチしたときはフィルタの番号, マッチしなかったときはfalseを返す
 		 *    (Boolean:Function) isThisType(String:filter) 種類に合致するフィルタかどうかを返す関数
-		 *    (FilterObject:Function) format(String:filter) フィルタを整形する関数 予めマッチ処理が行いやすい形(正規表現ならRegExpオブジェクト)にしたものを返す
+		 *    (FilterObject:Function) format(String:filter)
+		 *                               フィルタを整形する関数 予めマッチ処理が行いやすい形(正規表現ならRegExpオブジェクト)にしたものを返す
 		 *    (String:Function) toString(FilterObject:filter) フォーマット済みフィルタデータを文字列形式にする関数
 		 *    (Array) list フィルタのリスト
 		 * }
 		 *
 		 * @type Array
 		 */
-		this.types = [
+		 this.types = [
 		
 			{
 				name: 'regExp',
@@ -453,7 +456,7 @@ filterList.prototype = {
 						( filter[0] === '*' && filter[filter.length-1] === '*' )   ){
 						filter = filter.slice(1, -1);
 					}
-
+	
 					return filter.split('*');
 				},
 				
@@ -650,7 +653,8 @@ filterList.prototype = {
 			},
 			
 		];
-		
+
+
 		/**
 		 * マッチ履歴
 		 * フィルタ文字列をキーとした以下のオブジェクトの集合
@@ -741,8 +745,6 @@ filterList.prototype = {
 				
 				this.optimize(true);
 		}
-		
-		
 
 	},
 	
@@ -753,7 +755,7 @@ filterList.prototype = {
 	 * @param {String} url 調べるURI
 	 * @return {Boolean} マッチしたかどうか
 	 */
-	match: function(url, win){
+	match: function(url){
 
 		return this.types.some(function(typeObj){
 			
@@ -800,9 +802,11 @@ filterList.prototype = {
 	
 		filterArray.forEach(function(filter){
 		
+			//合致するフィルタの種類を調べて追加する
 			this.types.some(function(typeObj){
 			
 				if(typeObj.isThisType(filter)){
+					
 					typeObj.list.push( typeObj.format(filter) );
 					
 					return true;
@@ -1684,18 +1688,25 @@ adblockSharp.filterManager = {
 
 adblockSharp.observer = {
 	
+	_observer: null,
+	
 	/**
 	 * observerを登録する
 	 */
 	start: function(){
-		var isExistsObserver = getPref('observerStarted');
+		var enumerator = Cc["@mozilla.org/appshell/window-mediator;1"].getService(Ci.nsIWindowMediator)
+								.getEnumerator('navigator:browser');
 		
-		if(!isExistsObserver){
-			this.observer = Cc['@mozilla.org/observer-service;1'].getService(Ci.nsIObserverService);
-			this.observer.addObserver(this, 'http-on-modify-request', false);
-			setPref('observerStarted', true);
-			log('Start observer');
+		//すでにスタートしていたら何もしない
+		while(enumerator.hasMoreElements()){
+			var win = enumerator.getNext();
+			if(win.adblockSharp.observer._observer) return;
 		}
+		
+		//どのウィンドウでもobserverが登録されていないときは登録処理を行う
+		this._observer = Cc['@mozilla.org/observer-service;1'].getService(Ci.nsIObserverService);
+		this._observer.addObserver(this, 'http-on-modify-request', false);
+		log('Observer started.');
 	},
 
 	
@@ -1712,11 +1723,11 @@ adblockSharp.observer = {
 		var isLastWindow = !enumerator.hasMoreElements();
 
 		//このウィンドウにobserverがあるならobserverを削除する
-		if(this.observer){
+		if(this._observer){
 			//remove observer
-			this.observer.removeObserver(this, 'http-on-modify-request');
-			log('Remove observer');
-			setPref('observerStarted', false);
+			this._observer.removeObserver(this, 'http-on-modify-request');
+			this._observer = null;
+			log('Observer removed.');
 	
 			//もし他のウィンドウがあるなら, そのウィンドウにobserverを委託する
 			if(!isLastWindow && mainWindow && mainWindow.adblockSharp){
@@ -1728,33 +1739,16 @@ adblockSharp.observer = {
 	observe: function(subject, topic, data){
 		if(topic !== 'http-on-modify-request' || !adblockSharp.enabled) return;
 
-		var http = subject.QueryInterface(Ci.nsIHttpChannel)
+		var http = subject.QueryInterface(Ci.nsIHttpChannel);
 		http = http.QueryInterface(Ci.nsIRequest);
 
 		var url = http.URI.spec;
-		var win = this.getRequesterWindow(http);
 
-		if( !adblockSharp.whiteList.match(url, win) && 
-			 adblockSharp.blackList.match(url, win)    ){
+		if( !adblockSharp.whiteList.match(url) && 
+			 adblockSharp.blackList.match(url)    ){
 				http.cancel(Cr.NS_ERROR_FAILURE);
 		}
-	},
-	
-	getRequesterWindow: function(aRequest){
-		if(aRequest.notificationCallbacks){
-			try{
-				return aRequest.notificationCallbacks.getInterface(Ci.nsILoadContext).associatedWindow;
-			}catch(ex){}
-		}
-		
-		if(aRequest.loadGroup && aRequest.loadGroup.notificationCallbacks){
-			try{
-				return aRequest.loadGroup.notificationCallbacks.getInterface(Ci.nsILoadContext).associatedWindow;
-			}catch(ex){}
-		}
-		
-		return null;
-	},
+	}
 };
 
 
