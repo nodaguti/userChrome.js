@@ -50,6 +50,7 @@ var logText = "";
 var suppressLogs;
 var twoPipeToRegExp;
 var separatorCharacterToRegExp;
+var addPlusToStarFilter;
 
 function log(str,old,after){
 	if(!(old || after)){
@@ -87,6 +88,7 @@ function convertList(){
 	twoPipeToRegExp = $('twoPipeToRegExp').checked;
 	separatorCharacterToRegExp = $('separatorCharacterToRegExp').checked;
 	suppressLogs = $('suppressLogs').checked;
+	addPlusToStarFilter = $('addPlusToStarFilter').checked;
 	
 	log(originalType + '形式のフィルタを変換します...');
 	
@@ -97,8 +99,8 @@ function convertList(){
 	//  変換後のCSSのデータを所定の形式のオブジェクト（後述）にした css を配列で返す必要がある.
 	//
 	//  [cssの書式]
-	//    css -- plain ドメイン指定のないもの. セレクタをキーにした連想配列. 値は使わないのでなんでも良い.
-	//        ├- domain ドメイン指定のあるもの. セレクタをキーにした連想配列. 値には各ドメインを配列で格納する.
+	//    css -- plain ドメイン指定のないもの. セレクタが入ってる配列.
+	//        ├- domain ドメイン指定のあるもの. ドメインをキーにした連想配列. 値にはセレクタを配列で格納する.
 	//        └- excludeDomain 除外ドメイン指定のあるもの. セレクタをキーにした連想配列. 値には除外ドメインを配列で格納する.
 	var [convertedFilter, css] = window['_convertListFrom' + originalType](filtersToConvert);
 
@@ -122,63 +124,72 @@ function convertList(){
 	$('convertedCSS').value = '';
 	if(css){
 		var cssStr = '/* *** adblock#.uc.js Element Hiding CSS *** */\n\n';
+		var _plainSelectors = [];
 		
 		//ドメイン指定なし
 		cssStr += '/* For all sites */\n'
-		
-		for(let i in css.plain){
-			cssStr += i + ',\n';
-		}
-		cssStr = cssStr.slice(0, -2);
+		cssStr += css.plain.join(',\n');
 		cssStr += '{\n   display: none !important;\n}\n';
+		_plainSelectors = css.plain.concat();
+		
 		
 		//除外ドメイン指定あり（除外ドメイン以外向けの記述）
 		cssStr += '\n/* For all sites except for specific domains */\n';
-		
-		for(let i in css.excludeDomain){
-			if(!css.plain[i]){
-				cssStr += i + ',\n';
+
+		for(let selector in css.excludeDomain){
+			if(_plainSelectors.indexOf(selector) === -1){
+				cssStr += selector + ',\n';
+				_plainSelectors.push(selector);
 			}
 		}
+		
 		cssStr = cssStr.slice(0, -2);
-		cssStr += '{\n   display: none !important;\n}';
+		cssStr += '{\n display: none !important;\n}\n';
+		
 		
 		//ドメイン指定あり
 		cssStr += '\n/* For specific domains */\n';
 		
-		for(let i in css.domain){
-			if(css.plain[i]) continue;
-		
-			cssStr += '@-moz-document ';
+		for(let domain in css.domain){
+			let _cssStr = '';
+			let selectorCounter = 0;
 			
-			css.domain[i].forEach(function(domain){
-				cssStr += 'domain(' + domain + '),';
+			_cssStr += '@-moz-document domain(' + domain + '){\n';
+		
+			css.domain[domain].forEach(function(selector){
+				if(_plainSelectors.indexOf(selector) !== -1) return;
+				_cssStr += '   ' + selector + ',\n';
+				selectorCounter++;
 			});
 			
 			//最後のカンマを削除
-			cssStr = cssStr.slice(0, -1);
+			_cssStr = _cssStr.slice(0, -2);
 			
-			cssStr += '{\n   ' + i + '{\n      display: none !important;\n   }\n}\n';
+			if(!selectorCounter) continue;
+			
+			_cssStr += '{\n      display: none !important;\n   }\n}\n';
+			
+			cssStr += _cssStr;
 		}
+		
 		
 		//除外ドメイン指定あり（除外ドメイン向けの記述）
 		cssStr += '\n/* Don\'t hide elements from following domains */\n';
 		
-		for(let i in css.excludeDomain){
-			if(css.plain[i]) continue;
-		
+		for(let selector in css.excludeDomain){
 			cssStr += '@-moz-document ';
 			
-			css.excludeDomain[i].forEach(function(domain){
+			css.excludeDomain[selector].forEach(function(domain){
 				cssStr += 'domain(' + domain + '),';
 			});
 			
 			//最後のカンマを削除
 			cssStr = cssStr.slice(0, -1);
 			
-			cssStr += '{\n   ' + i + '{\n      display: block !important;\n   }\n}\n';
+			cssStr += '{\n   ' + selector + '{\n      display: block !important;\n   }\n}\n';
 		}
 		
+		//出力
 		$('convertedCSS').value = cssStr;
 	}
 	
@@ -196,16 +207,16 @@ function _convertListFromAdblock(lists){
 	var l=lists.length,
 		list,  //lists[i]
 		m,  //正規表現の結果をとっておく
-		css = {plain:{}, domain:{}, excludeDomain:{}},  //変換後のCSS
+		css = {plain:[], domain:{}, excludeDomain:{}},  //変換後のCSS
 		convertedFilter = [],  //変換後のフィルタ
 		tmp,
 		original,   //ログ表示用の変換前フィルタ
-		convertToRegExp,  //正規表現に変換したかどうか
+		convertedToRegExp,  //正規表現に変換したかどうか
 		isWhiteList;  //ホワイトリストかどうか
 	
 	for(var i=0; i<l; i++){
 		list = lists[i];
-		convertToRegExp = false;
+		convertedToRegExp = false;
 
 		//出力ファイルの先頭文字列は無視する
 		if(list.lastIndexOf("[Adblock", 0) !== -1){
@@ -223,26 +234,30 @@ function _convertListFromAdblock(lists){
 			//ドメインの指定と要素の指定に分割する
 			list = list.split('##');
 
+			var selector = list[1];
+			
 			if(list[0]){
 				//ドメインの指定がある場合
 				var domains = list[0].split(',');
 				
 				for(var j=0, k=domains.length; j<k; j++){
 				
-					if(domains[j].lastIndexOf('~', 0) !== -1){
+					if(domains[j][0] === '~'){
 						//exclude
-						if(!css.excludeDomain[list[1]]) css.excludeDomain[list[1]] = [];
-						css.excludeDomain[list[1]].push(domains[j].substring(1));
+						var domain = domains[j].substring(1);
+						
+						if(!css.excludeDomain[selector]) css.excludeDomain[selector] = [];
+						css.excludeDomain[selector].push(domain);
 					}else{
 						//include
-						if(!css.domain[list[1]]) css.domain[list[1]] = [];
-						css.domain[list[1]].push(domains[j]);
+						if(!css.domain[domains[j]]) css.domain[domains[j]] = [];
+						css.domain[domains[j]].push(selector);
 					}
 				
 				}
 
 			}else{
-				css.plain[list[1]] = 1;
+				css.plain.push(selector);
 			}
 
 			continue;
@@ -284,7 +299,7 @@ function _convertListFromAdblock(lists){
 				//正規表現に変換
 				tmp = list.substring(2);
 				list = '/^https?:\\/\\/(:?\\w+\\.)*' + tmp.replace(/\W/g,"\\$&") + '/';
-				convertToRegExp = true;
+				convertedToRegExp = true;
 			}else{
 				//削除 (ログ出力)
 				tmp = list;
@@ -293,11 +308,11 @@ function _convertListFromAdblock(lists){
 			}
 		}
 
-		//「^」(separactor character)
-		if( (convertToRegExp && tmp.indexOf('^') !== -1 ) ||
+		//「^」(separator character)
+		if( (convertedToRegExp && tmp.indexOf('^') !== -1 ) ||
 			 list.indexOf('^') !== -1){
 		
-			if(convertToRegExp){
+			if(convertedToRegExp){
 				if(separatorCharacterToRegExp){
 					list = list.replace(/\\\^/g, '[\\/:\\?=&]');
 				}else{
@@ -307,7 +322,7 @@ function _convertListFromAdblock(lists){
 				if(separatorCharacterToRegExp){
 					//正規表現に変換
 					list = '/' + list.replace(/\W/g,"\\$&").replace(/\\\^/g, '[\\/:\\?=&]') + '/';
-					convertToRegExp = true;
+					convertedToRegExp = true;
 				}else{
 					//*へ変換
 					list = list.replace(/\^/g,'*');
@@ -316,7 +331,7 @@ function _convertListFromAdblock(lists){
 		}
 		
 		//正規表現に変換したフィルタを追加する
-		if(convertToRegExp){
+		if(convertedToRegExp){
 			_pushConvertedList(list);
 			log('正規表現に変換しました', original, list);
 			continue;
@@ -333,9 +348,14 @@ function _convertListFromAdblock(lists){
 		//連続する*を一つにする
 		list = list.replace(/\*+/g, '*');
 		
+		//*しか無いフィルタは削除する
+		if(/^\**$/.test(list)){
+			continue;
+		}
+		
 		//*が途中にある場合
 		tmp = list.slice(1, -1);
-		if(tmp.indexOf('*') !== -1){
+		if(addPlusToStarFilter && tmp.indexOf('*') !== -1){
 			list = '+' + list + '+';
 		}
 
@@ -403,7 +423,7 @@ function _convertListFromAdblock2(lists){
 					result.push(filter);
 					break;
 				default:
-					log(filter);
+					log("Unknown Type: " + filter);
 			}
 		}
 		return result;
@@ -476,12 +496,13 @@ CSS:<br />
 
 <h2>Option</h2>
 変換元の種類: 
-<label><input type='radio' name='originalType' value="Adblock" checked='checked' />Adblock Plus </label>
+<label><input type='radio' name='originalType' value="Adblock" checked='checked' />Adblock Plus</label>
 <label><input type='radio' name='originalType' value='Adblock2' />Adblock++</label>
 <label><input type='radio' name='originalType' value="Filter" />filter: </label><br />
-<label><input type="checkbox" id="separatorCharacterToRegExp" /> 「^」(Separator Character)を正規表現に変換する (チェックしない場合「*」に変換されます)</label><br />
-<label><input type="checkbox" id="twoPipeToRegExp" /> 「||」(beginning of the domain)を正規表現に変換する (チェックしない場合「||」は削除されます)</label><br />
-<label><input type="checkbox" id="convertIntoOldStyle" /> filter: 形式で書き出す (10/05/21 21:30 以前のバージョン向け)</label><br />
+<label><input type="checkbox" id="separatorCharacterToRegExp" />「^」(Separator Character)を正規表現に変換する (チェックしない場合「*」に変換されます)</label><br />
+<label><input type="checkbox" id="twoPipeToRegExp" />「||」(beginning of the domain)を正規表現に変換する (チェックしない場合「||」は削除されます)</label><br />
+<label><input type="checkbox" id="addPlusToStarFilter" checked="checked" />「*」を含むフィルタを「+」で囲う</label><br />
+<label><input type="checkbox" id="convertIntoOldStyle" /> filter: 形式で書き出す</label><br />
 <label><input type="checkbox" id="suppressLogs" checked="checked" /> ログの出力を抑制する</label><br /><br />
 
 <input type="button" value="変換" onclick="convertList();" /><br /><br />
