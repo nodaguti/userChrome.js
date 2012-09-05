@@ -5,8 +5,9 @@
 // @author      nodaguti
 // @license     MIT License
 // @compatibility Firefox 3.6 - Firefox 15
-// @version     12/09/03 17:00 アスタリスクと前方一致を使ったフィルタが正しくマッチしないことがあるバグを修正
+// @version     12/09/05 19:00 Bug 788290 - Turn javascript.options.xml.chrome off by default
 // ==/UserScript==
+// @version     12/09/03 17:00 アスタリスクと前方一致を使ったフィルタが正しくマッチしないことがあるバグを修正
 // @version     12/07/14 12:30 Firefoxが強制終了した後に起動するとobserverの登録がされないバグを修正
 // @version     12/05/29 22:00 Global Storageの履歴データが壊れていると正しくデータが引き継がれなくなるバグを修正
 // @version     12/05/29 21:30 Firefox 13でFilter Managerが正常に動作しないバグを修正
@@ -889,304 +890,303 @@ filterList.prototype = {
 
 adblockSharp.filterManager = {
 	
-	template: btoa(<![CDATA[
-		<!DOCTYPE html>
-		<html lang='ja'>
-		<head>
-			<meta charset="utf-8" />
-			<title>adblock#.uc.js Filter Manager</title>
-			<style>
-				*{
-					line-height: 1.5;
-					-moz-box-sizing: border-box;
-					box-sizing: border-box;
-					margin: 0;
-					padding: 0;
-					font-weight: normal;
-				}
-				body{
-					overflow-x: hidden;
-				}
-				#container{
-				}
-				#sidebar{
-					background-color: #efefef;
-					color: #333;
-					border-right: 1px #ccc solid;
-					border-bottom: 1px #ccc solid;
-					text-align: right;
-					position: fixed;
-					top: 0; left: 0;
-					width: 20%;
-					height: 100%;
-				}
-				#main{
-					margin-left: 20%;
-					width: 80%;
-				}
-				#page-title{
-					padding: 0.3em;
-				}
-				
-				#menu{
-					margin-top: 1em;
-					list-style-type: none;
-				}
-				#menu a{
-					text-decoration: none;
-					color: black;
-					display: block;
-					padding: 0.5em;
-					padding-right: 1.2em;
-					cursor: pointer;      /* for Firefox 3.6 */
-				}
-				#menu a:hover{
-					background-color: #b8baff;
-					outline: 1px skyblue solid;
-				}
-				
-				#blackList, #whiteList, #pref{
-					display: none;
-					padding: 1em;
-				}
-				#blackList:target, #whiteList:target, #pref:target{
-					display: block;
-				}
-				
-				#main h1{
-					border-bottom: #ccc 1px solid;
-					padding-right: 85%;
-					margin-bottom: 1.3em;
-					min-width: 11em;
-					white-space: nowrap;
-				}
-				#main h2{
-					font-weight: bold;
-					font-size: 90%;
-				}
-				#main h2 + *{
-					margin-top: -1.5em;
-					margin-left: 20%;
-				}
-				#main h3{
-					color: #333;
-					margin-bottom: 1.3em;
-				}
-				#main h3 + *{
-					font-size: 90%;
-					margin-left: 1.5em;
-				}
-				
-				input[type='text']{
-					border: 1px #bfbfbf solid;
-					border-radius: 3px;
-					-moz-border-radius: 3px;
-					color: #444;
-					padding: 3px;
-				}
-				button, input[type='checkbox'], select{
-					background-image: linear-gradient(to bottom, #ededed, #ededed 38%, #dedede);
-					background-image: -moz-linear-gradient(top, #ededed, #ededed 38%, #dedede);
-					border: 1px #ccc solid;
-					border-radius: 3px;
-					-moz-border-radius: 3px;
-					box-shadow: 0 1px 0 rgba(0, 0, 0, 0.1);
-					-moz-box-shadow: 0 1px 0 rgba(0, 0, 0, 0.1);
-					color: #444;
-					text-shadow: 0 1px 0 #f0f0f0;
-					padding: 2px 10px;
-					margin: 0 5px;
-				}
-				button::-moz-focus-inner{
-					border: 0 !important;
-					padding: 0 !important;
-				}
-				textarea{
-					resize: none;
-				}
-				
-				table{
-					border-collapse: collapse;
-					outline: 1px solid #bcbcbc;
-					max-width: 80%;
-				}
-				tr, td{
-					padding: 5px;
-					cursor: default;
-				}
-				tr.header td{
-					background-color: #cccccc;
-					background-image: -moz-linear-gradient(top, #fff, #ccc);
-					background-image: linear-gradient(to bottom, #fff, #ccc);
-					border-right: 1px #333 solid;
-					padding: 2px 10px 2px 5px;
-				}
-				tr.header td:last-child{
-					border-right: none;
-				}
-				tr:not(.header):hover,
-				tr.selected{
-					background-color: #b8baff;
-				}
-				hr{
-					border: 1px #efefef solid;
-					margin: 1.3em 0;
-				}
-				.list-table-container hr{
-					border: none;
-				}
-				.list-table-container hr:not(:first-child){
-					border: #efefef 1px solid;
-					width: 95%;
-					margin: 1.3em 0;
-				}
-				.filter-editbox{
-					width: 100%;
-					height: 1.5em;
-					border: 1px #ccc solid;
-					font-size: 100%;
-					font-family: sans;
-				}
-				
-				#dialog-wrapper{
-					width: 100%;
-					height: 100%;
-					background-color: rgba(0, 0, 0, 0.45);
-					z-index: 99;
-					display: none;
-					position: fixed;
-					top: 0; left: 0;
-				}
-				.dialog{
-					border: 1px #666 solid;
-					border-radius: 6px;
-					-moz-border-radius: 6px;
-					box-shadow: 0 4px 12px rgba(0, 0, 0, 0.6), 0 1px 0 rgba(255, 255, 255, 0.5) inset;
-					-moz-box-shadow: 0 4px 12px rgba(0, 0, 0, 0.6), 0 1px 0 rgba(255, 255, 255, 0.5) inset;
-					background-color: #fefefe;
-					padding: 1em;
-					position: fixed;
-					box-sizing: content-box;
-					-moz-box-sizing: content-box;
-					color: #444;
-					font-size: 90%;
-					overflow-x: hidden;
-					overflow-y: auto;
-					max-width: 90%;
-					max-height: 95%;
-				}
-				.dialog-textarea{
-					padding: 3px;
-					box-shadow: 0 4px 8px rgba(0, 0, 0, 0.6) inset;
-					-moz-box-shadow: 0 4px 8px rgba(0, 0, 0, 0.6) inset;
-					width: 100%;
-					margin: 1em auto;
-				}
-				.dialog-button-wrapper{
-					position: absolute;
-					bottom: 10px;
-					right: 10px;
-				}
-				.dialog-size-judgement{
-					visibility: hidden;
-					position: absolute;
-					top: 0; left: 0;
-					width: auto; height: auto;
-					line-height: 1.8;
-					padding: 1em;
-					padding-bottom: 1.5em;
-					box-sizing: content-box;
-					-moz-box-sizing: content-box;
-				}
-				
-				#toolbar-wrapper{
-					width: 100%;
-					position: absolute;
-					bottom: 1.5em;
-					left: 0;
-					text-align: center;
-				}
-				#toolbar{
-					display: inline-block;
-				}
-				.toolbar-button{
-					font-family: Arial, Helvetica, sans-serif;
-					font-size: 130%;
-					line-height: 1.0;
-					color: #3c3c3c;
-					height: 1.2em;
-					width: 1.8em;
-					margin: 0 5px;
-					background: -moz-linear-gradient(top, #efefef, #bcbcbc);
-					background: linear-gradient(to bottom, #efefef, #bcbcbc);
-					border-radius: 5px;
-					-moz-border-radius: 5px;
-					border: 1px solid #555;
-				}
-				
-				#script-information{
-					position: absolute;
-					bottom: 1.5em;
-					left: 20%;
-					margin-left: 1em;
-				}
-			</style>
-		</head>
-		<body>
-			<div id="container">
-				<div id="sidebar">
-					<h1 id="page-title">Filter Manager</h1>
-				
-					<ul id="menu">
-						<li><a href="#blackList">Black List</a></li>
-						<li><a href="#whiteList">White List</a></li>
-						<li><a href="#pref">Preference</a></li>
-					</ul>
-					<div id='toolbar-wrapper'><div id='toolbar'></div></div>
-				</div>
-				
-				<div id="main">
-					<div id="blackList">
-						<h1>Black List</h1>
-						<div class="list-table-container"></div>
-					</div>
-					<div id="whiteList">
-						<h1>White List</h1>
-						<div class="list-table-container"></div>
-					</div>
-					<div id='pref'>
-						<h1>Preference</h1>
-						
-						<h2>正規表現</h2>
-						<p>
-							正規表現のフラグ: <input type='text' id='pref-regexp-flags' />
-						</p>
-						
-						<hr />
-						
-						<h2>フィルタ認識</h2>
-						<p>
-							<label>
-								<input type='checkbox' id='pref-star-filter-without-plus' /> +なしでもアスタリスクフィルタとして認識する
-							</label>
-						</p>
-						
-						<div id='script-information'>
-							<h3>adblock#.uc.jsについて</h3>
-							<p>
-								adblock#.uc.jsは<a href='https://github.com/nodaguti/userChrome.js/tree/master/Adblock%23.uc.js'>Github</a>でホストされています.<br />
-								このスクリプトは<a href='http://www.opensource.org/licenses/mit-license.php'>MIT License</a>の下で配布されています.<br />
-								<a href='https://github.com/nodaguti/userChrome.js/commits/master.atom'>RSS</a>により本スクリプトの更新情報を購読できます.
-							</p>
-						</div>
-					</div>
-				</div>
-			</div>
-			
-			<div id="dialog-wrapper"></div>
-		</body>
-		</html>
-	]]>.toString().replace(/[\t\n]/g, "")),
+	template: btoa("" +
+"		<!DOCTYPE html>\
+		<html lang='ja'>\
+		<head>\
+			<meta charset='utf-8' />\
+			<title>adblock#.uc.js Filter Manager</title>\
+			<style>\
+				*{\
+					line-height: 1.5;\
+					-moz-box-sizing: border-box;\
+					box-sizing: border-box;\
+					margin: 0;\
+					padding: 0;\
+					font-weight: normal;\
+				}\
+				body{\
+					overflow-x: hidden;\
+				}\
+				#container{\
+				}\
+				#sidebar{\
+					background-color: #efefef;\
+					color: #333;\
+					border-right: 1px #ccc solid;\
+					border-bottom: 1px #ccc solid;\
+					text-align: right;\
+					position: fixed;\
+					top: 0; left: 0;\
+					width: 20%;\
+					height: 100%;\
+				}\
+				#main{\
+					margin-left: 20%;\
+					width: 80%;\
+				}\
+				#page-title{\
+					padding: 0.3em;\
+				}\
+				\
+				#menu{\
+					margin-top: 1em;\
+					list-style-type: none;\
+				}\
+				#menu a{\
+					text-decoration: none;\
+					color: black;\
+					display: block;\
+					padding: 0.5em;\
+					padding-right: 1.2em;\
+					cursor: pointer;      /* for Firefox 3.6 */\
+				}\
+				#menu a:hover{\
+					background-color: #b8baff;\
+					outline: 1px skyblue solid;\
+				}\
+				\
+				#blackList, #whiteList, #pref{\
+					display: none;\
+					padding: 1em;\
+				}\
+				#blackList:target, #whiteList:target, #pref:target{\
+					display: block;\
+				}\
+				\
+				#main h1{\
+					border-bottom: #ccc 1px solid;\
+					padding-right: 85%;\
+					margin-bottom: 1.3em;\
+					min-width: 11em;\
+					white-space: nowrap;\
+				}\
+				#main h2{\
+					font-weight: bold;\
+					font-size: 90%;\
+				}\
+				#main h2 + *{\
+					margin-top: -1.5em;\
+					margin-left: 20%;\
+				}\
+				#main h3{\
+					color: #333;\
+					margin-bottom: 1.3em;\
+				}\
+				#main h3 + *{\
+					font-size: 90%;\
+					margin-left: 1.5em;\
+				}\
+				\
+				input[type='text']{\
+					border: 1px #bfbfbf solid;\
+					border-radius: 3px;\
+					-moz-border-radius: 3px;\
+					color: #444;\
+					padding: 3px;\
+				}\
+				button, input[type='checkbox'], select{\
+					background-image: linear-gradient(to bottom, #ededed, #ededed 38%, #dedede);\
+					background-image: -moz-linear-gradient(top, #ededed, #ededed 38%, #dedede);\
+					border: 1px #ccc solid;\
+					border-radius: 3px;\
+					-moz-border-radius: 3px;\
+					box-shadow: 0 1px 0 rgba(0, 0, 0, 0.1);\
+					-moz-box-shadow: 0 1px 0 rgba(0, 0, 0, 0.1);\
+					color: #444;\
+					text-shadow: 0 1px 0 #f0f0f0;\
+					padding: 2px 10px;\
+					margin: 0 5px;\
+				}\
+				button::-moz-focus-inner{\
+					border: 0 !important;\
+					padding: 0 !important;\
+				}\
+				textarea{\
+					resize: none;\
+				}\
+				\
+				table{\
+					border-collapse: collapse;\
+					outline: 1px solid #bcbcbc;\
+					max-width: 80%;\
+				}\
+				tr, td{\
+					padding: 5px;\
+					cursor: default;\
+				}\
+				tr.header td{\
+					background-color: #cccccc;\
+					background-image: -moz-linear-gradient(top, #fff, #ccc);\
+					background-image: linear-gradient(to bottom, #fff, #ccc);\
+					border-right: 1px #333 solid;\
+					padding: 2px 10px 2px 5px;\
+				}\
+				tr.header td:last-child{\
+					border-right: none;\
+				}\
+				tr:not(.header):hover,\
+				tr.selected{\
+					background-color: #b8baff;\
+				}\
+				hr{\
+					border: 1px #efefef solid;\
+					margin: 1.3em 0;\
+				}\
+				.list-table-container hr{\
+					border: none;\
+				}\
+				.list-table-container hr:not(:first-child){\
+					border: #efefef 1px solid;\
+					width: 95%;\
+					margin: 1.3em 0;\
+				}\
+				.filter-editbox{\
+					width: 100%;\
+					height: 1.5em;\
+					border: 1px #ccc solid;\
+					font-size: 100%;\
+					font-family: sans;\
+				}\
+				\
+				#dialog-wrapper{\
+					width: 100%;\
+					height: 100%;\
+					background-color: rgba(0, 0, 0, 0.45);\
+					z-index: 99;\
+					display: none;\
+					position: fixed;\
+					top: 0; left: 0;\
+				}\
+				.dialog{\
+					border: 1px #666 solid;\
+					border-radius: 6px;\
+					-moz-border-radius: 6px;\
+					box-shadow: 0 4px 12px rgba(0, 0, 0, 0.6), 0 1px 0 rgba(255, 255, 255, 0.5) inset;\
+					-moz-box-shadow: 0 4px 12px rgba(0, 0, 0, 0.6), 0 1px 0 rgba(255, 255, 255, 0.5) inset;\
+					background-color: #fefefe;\
+					padding: 1em;\
+					position: fixed;\
+					box-sizing: content-box;\
+					-moz-box-sizing: content-box;\
+					color: #444;\
+					font-size: 90%;\
+					overflow-x: hidden;\
+					overflow-y: auto;\
+					max-width: 90%;\
+					max-height: 95%;\
+				}\
+				.dialog-textarea{\
+					padding: 3px;\
+					box-shadow: 0 4px 8px rgba(0, 0, 0, 0.6) inset;\
+					-moz-box-shadow: 0 4px 8px rgba(0, 0, 0, 0.6) inset;\
+					width: 100%;\
+					margin: 1em auto;\
+				}\
+				.dialog-button-wrapper{\
+					position: absolute;\
+					bottom: 10px;\
+					right: 10px;\
+				}\
+				.dialog-size-judgement{\
+					visibility: hidden;\
+					position: absolute;\
+					top: 0; left: 0;\
+					width: auto; height: auto;\
+					line-height: 1.8;\
+					padding: 1em;\
+					padding-bottom: 1.5em;\
+					box-sizing: content-box;\
+					-moz-box-sizing: content-box;\
+				}\
+				\
+				#toolbar-wrapper{\
+					width: 100%;\
+					position: absolute;\
+					bottom: 1.5em;\
+					left: 0;\
+					text-align: center;\
+				}\
+				#toolbar{\
+					display: inline-block;\
+				}\
+				.toolbar-button{\
+					font-family: Arial, Helvetica, sans-serif;\
+					font-size: 130%;\
+					line-height: 1.0;\
+					color: #3c3c3c;\
+					height: 1.2em;\
+					width: 1.8em;\
+					margin: 0 5px;\
+					background: -moz-linear-gradient(top, #efefef, #bcbcbc);\
+					background: linear-gradient(to bottom, #efefef, #bcbcbc);\
+					border-radius: 5px;\
+					-moz-border-radius: 5px;\
+					border: 1px solid #555;\
+				}\
+				\
+				#script-information{\
+					position: absolute;\
+					bottom: 1.5em;\
+					left: 20%;\
+					margin-left: 1em;\
+				}\
+			</style>\
+		</head>\
+		<body>\
+			<div id='container'>\
+				<div id='sidebar'>\
+					<h1 id='page-title'>Filter Manager</h1>\
+				\
+					<ul id='menu'>\
+						<li><a href='#blackList'>Black List</a></li>\
+						<li><a href='#whiteList'>White List</a></li>\
+						<li><a href='#pref'>Preference</a></li>\
+					</ul>\
+					<div id='toolbar-wrapper'><div id='toolbar'></div></div>\
+				</div>\
+				\
+				<div id='main'>\
+					<div id='blackList'>\
+						<h1>Black List</h1>\
+						<div class='list-table-container'></div>\
+					</div>\
+					<div id='whiteList'>\
+						<h1>White List</h1>\
+						<div class='list-table-container'></div>\
+					</div>\
+					<div id='pref'>\
+						<h1>Preference</h1>\
+						\
+						<h2>正規表現</h2>\
+						<p>\
+							正規表現のフラグ: <input type='text' id='pref-regexp-flags' />\
+						</p>\
+						\
+						<hr />\
+						\
+						<h2>フィルタ認識</h2>\
+						<p>\
+							<label>\
+								<input type='checkbox' id='pref-star-filter-without-plus' /> +なしでもアスタリスクフィルタとして認識する\
+							</label>\
+						</p>\
+						\
+						<div id='script-information'>\
+							<h3>adblock#.uc.jsについて</h3>\
+							<p>\
+								adblock#.uc.jsは<a href='https://github.com/nodaguti/userChrome.js/tree/master/Adblock%23.uc.js'>Github</a>でホストされています.<br />\
+								このスクリプトは<a href='http://www.opensource.org/licenses/mit-license.php'>MIT License</a>の下で配布されています.<br />\
+								<a href='https://github.com/nodaguti/userChrome.js/commits/master.atom'>RSS</a>により本スクリプトの更新情報を購読できます.\
+							</p>\
+						</div>\
+					</div>\
+				</div>\
+			</div>\
+			\
+			<div id='dialog-wrapper'></div>\
+		</body>\
+		</html>".replace(/[\t\n]/g, "")),
 	
 	$: function(id){
 		return this.doc.getElementById(id);
