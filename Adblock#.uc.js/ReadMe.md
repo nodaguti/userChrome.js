@@ -75,6 +75,7 @@ adblock#.uc.js
    フィルタやマッチ履歴などのデータは プロファイルフォルダ/chrome/adblock#.json に保存される
    (chromeフォルダは, [rebuild_userChrome.uc.xul](https://github.com/alice0775/userChrome.js/blob/master/rebuild_userChrome.uc.xul)
    を使っていれば 「ツール」->「userChrome.jsの設定」->「chromeフォルダを開く」より開くことができる).
+   フィルタデータの消失に備えてadblock#.jsonをバックアップしておくことを推奨.
    
    スクリプトファイル内のfilter: 部分にフィルタを書く方式は廃止されたので,  
    移行する場合にはリスト変換ツールを使って変換後, Filter Manager より追加すること.
@@ -190,13 +191,12 @@ adblock#.uc.js
 
 ## Firefox 13以降をお使いの方へ
 
-   [Firefox 13でGlobal Storageが削除された](https://developer.mozilla.org/en-US/docs/DOM/Storage#globalStorage)
-   影響で, 10/12/30 18:30 から 11/01/30 07:30 のバージョンを使っている場合に
+   [Firefox 13でGlobal Storageが削除された](https://developer.mozilla.org/en-US/docs/DOM/Storage#globalStorage)影響で,
+   10/12/30 18:30 から 11/01/30 07:30 のバージョンを使っている場合に
    Firefox 13以降でadblock#.uc.jsが動作しなくなります(フィルタデータにアクセスできなくなるため).
    
    その際, Firefox 13以降をお使いのままadblock#.uc.jsを最新版へと更新しても, フィルタデータの引き継ぎはできませんので,
-   もしFirefox 13にアップデートしてしまった場合には, 一度[こちら](https://ftp.mozilla.org/pub/mozilla.org/firefox/releases/)より
-   Firefox 12をダウンロードし, Firefox 12を起動して下さい.
+   もしFirefox 13にアップデートしてしまった場合には, 一度[Firefox 12をダウンロード](https://ftp.mozilla.org/pub/mozilla.org/firefox/releases/)して, Firefox 12を起動して下さい.
    
    一度Firefox 12を起動すれば自動でデータがGlobal Storageより引き継がれますので,
    adblock#.jsonがプロファイルフォルダのchromeフォルダ内にできていることを確認した上でFirefox 12を終了して下さい.
