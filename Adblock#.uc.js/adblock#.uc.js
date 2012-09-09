@@ -5,8 +5,9 @@
 // @author      nodaguti
 // @license     MIT License
 // @compatibility Firefox 3.6 - Firefox 15
-// @version     12/09/05 19:00 Bug 788290 - Turn javascript.options.xml.chrome off by default
+// @version     12/09/09 13:20 前回の修正が不十分だった
 // ==/UserScript==
+// @version     12/09/05 19:00 Bug 788290 - Turn javascript.options.xml.chrome off by default
 // @version     12/09/03 17:00 アスタリスクと前方一致を使ったフィルタが正しくマッチしないことがあるバグを修正
 // @version     12/07/14 12:30 Firefoxが強制終了した後に起動するとobserverの登録がされないバグを修正
 // @version     12/05/29 22:00 Global Storageの履歴データが壊れていると正しくデータが引き継がれなくなるバグを修正
@@ -22,6 +23,7 @@
 //                 - 正規表現フィルタのフラグを指定できるようにした
 //                 - アスタリスクフィルタを「+」なしで利用できるようにするオプションを有効にすると,
 //                   単純文字列フィルタもアスタリスクフィルタとして認識してしまうバグを修正
+//                 - Filter Managerを刷新
 //                 - 単純文字列の前方一致/後方一致フィルタがある場合にFilter Managerが正しく起動できないバグを修正
 //                 - 特定の文字列が含まれるフィルタを追加するとFilter Managerが正しく起動できなくなるバグを修正
 //                 - 正しく履歴が保存できないことがあるバグを修正
@@ -891,7 +893,7 @@ filterList.prototype = {
 adblockSharp.filterManager = {
 	
 	template: btoa("" +
-"		<!DOCTYPE html>\
+		"<!DOCTYPE html>\
 		<html lang='ja'>\
 		<head>\
 			<meta charset='utf-8' />\
@@ -1575,11 +1577,10 @@ adblockSharp.filterManager = {
 	},
 	
 	addFilter: function(event){
-		var content = btoa(<![CDATA[
-			以下に追加するフィルタを入力して下さい.<br />
-			<textarea class="dialog-textarea" rows="10" cols="80"></textarea><br />
-			<label><input type='checkbox' class='whitelist-without-atmark' /> @@なしでもホワイトリストとして処理する</label>
-		]]>.toString());
+		var content = btoa("" +
+			"以下に追加するフィルタを入力して下さい.<br />\
+			<textarea class='dialog-textarea' rows='10' cols='80'></textarea><br />\
+			<label><input type='checkbox' class='whitelist-without-atmark' /> @@なしでもホワイトリストとして処理する</label>");
 		
 		this.dialog(content, function(dialog){
 			var inputData = dialog.getElementsByClassName("dialog-textarea")[0].value;

@@ -106,7 +106,7 @@ adblock#.uc.js
    
       入力欄に記入されたフィルターを, 1行ごとにフィルターとして追加する.
       その際, フィルタの種類は自動的に判別される.
-	  
+ 
       「@@がなくてもホワイトリストとして処理する」にチェックを入れると,
       入力したフィルタをすべてホワイトリストに追加する.
 
@@ -117,11 +117,11 @@ adblock#.uc.js
    * フィルターの編集 (✐)
    
       項目をダブルクリックでも編集状態に入ることができる.
-	  
+ 
       編集状態になるとフィルタ名のところがテキストボックスになるので, そこでフィルタを編集する.
-	  
+ 
       テキストボックス内でエンターを押すか, フィルターリスト以外のところをクリックすれば編集状態を終了する.
-	  
+ 
       なお, 複数項目を同時に編集することはできない.
       
    * フィルターの最適化 (⚙)
@@ -167,7 +167,7 @@ adblock#.uc.js
    * 一応 豆腐氏の Adblock Plus 日本向けフィルタ(http://blog-imgs-31-origin.fc2.com/t/o/f/tofukko/Adblock_Plus_list.txt) に載っているリストが大体変換されることを確認済.
 
 ### 変換元リストの入手方法
-		
+
 #### Adblock plus
 
  1. Adblock Plusの設定画面を開く
@@ -175,15 +175,13 @@ adblock#.uc.js
  3. フィルタがテキスト形式で保存されるのでそのファイルの内容をコピペすれば良い
 
 #### Adblock++
-		  
+
  1. about:config を開く
  2. extensions.adblock++.filter_array をコピペすれば良い
 
 
 ## 注意
 
-   * 「Enable adblock#.uc.js」にチェックが入っているのにブロックされない場合, observerの登録にミスっている場合があります.  
-     その場合は, about:config より adblock#.observerStarted の値を false にしてから新しいウィンドウを開くと直ります.
    * 要素非表示フィルタへの対応予定は今のところないので, userContent.css/Stylishでお願いします(理由等については下のFAQを参照して下さい).
    * このスクリプトは総じてあまりテストされていないので, 不具合がある可能性が大いにあります. 
      このスクリプトを使用したことによって生じたいかなる損害も作者はその責任を負いません.  
@@ -192,7 +190,8 @@ adblock#.uc.js
 
 ## Firefox 13以降をお使いの方へ
 
-   Firefox 13でGlobal Storageが削除された影響で, 10/12/30 18:30 から 11/01/30 07:30 のバージョンを使っている場合に
+   [Firefox 13でGlobal Storageが削除された](https://developer.mozilla.org/en-US/docs/DOM/Storage#globalStorage)
+   影響で, 10/12/30 18:30 から 11/01/30 07:30 のバージョンを使っている場合に
    Firefox 13以降でadblock#.uc.jsが動作しなくなります(フィルタデータにアクセスできなくなるため).
    
    その際, Firefox 13以降をお使いのままadblock#.uc.jsを最新版へと更新しても, フィルタデータの引き継ぎはできませんので,
@@ -269,6 +268,11 @@ img:not(src):-moz-broken{
 }
 ```
 
+Q. Enable adblock#.uc.jsにチェックが入っているのに広告が全くブロックされない
+A. 12/05/29 22:00以前のバージョンで, 「Enable adblock#.uc.js」にチェックが入っているのにブロックされない場合, observerの登録にミスっている場合があります.  
+   その場合は, about:config より adblock#.observerStarted の値を false にしてから新しいウィンドウを開くと直ります.
+   また, Filter Managerよりフィルタがきちんと追加されているかどうか確認して下さい.
+
 Q. バグを見つけた/要望がある
 
 A. 本ページ右上のIssuesより追加するか, [【CSS】Mozilla広告ブロック【Adblock】](http://find.2ch.net/?STR=Mozilla%B9%AD%B9%F0%A5%D6%A5%ED%A5%C3%A5%AF)に書き込んでいただければ対応します. もちろん[Twitter](http://www.twitter.com/nodaguti/)や[メール](mailto:nodaguti[at]GMail)でも構いません.
@@ -276,6 +280,7 @@ A. 本ページ右上のIssuesより追加するか, [【CSS】Mozilla広告ブ�
 
 ## 更新履歴
 
+   * 12/09/09 13:20 前回の修正が不十分だった
    * 12/09/05 19:00 Bug 788290 - Turn javascript.options.xml.chrome off by default
    * 12/09/03 17:00 アスタリスクと前方一致を使ったフィルタが正しくマッチしないことがあるバグを修正
    * 12/07/14 12:30 Firefoxが強制終了した後に起動するとobserverの登録がされないバグを修正
