@@ -421,11 +421,11 @@ filterList.prototype = {
 				list: [],
 				
 				isThisType: function(filter){
-					return /^\/.*\/$/.test(filter);
+					return filter[0] === '/' && filter[filter.length - 1] === '/';
 				},
 				
 				format: function(filter){
-					return new RegExp(filter.match(/^\/(.*)\/$/)[1], getPref('regexp-frags'));
+					return new RegExp(filter.slice(1, -1), getPref('regexp-frags'));
 				},
 				
 				match: function(url){
@@ -503,7 +503,7 @@ filterList.prototype = {
 				list: [],
 				
 				isThisType: function(filter){
-					return filter.lastIndexOf('|', 0) !== -1;
+					return filter[0] === '|';
 				},
 				
 				format: function(filter){
@@ -566,7 +566,7 @@ filterList.prototype = {
 				list: [],
 				
 				isThisType: function(filter){
-					return filter.indexOf('|', filter.length - 1) !== -1;
+					return filter[filter.length - 1] === '|';
 				},
 				
 				format: function(filter){
@@ -1650,7 +1650,7 @@ adblockSharp.filterManager = {
 		
 		//Cancel, OKボタンを追加
 		var buttonWrapper = this.createNode('div', { 'class': 'dialog-button-wrapper' }, dialog);
-		var cancel = this.createNode('button', { 'class': 'dialog-button', ':context': btoa('Cancel') }, buttonWrapper);
+		var cancel = this.createNode('button', { 'class': 'dialog-button', ':context': 'Cancel' }, buttonWrapper);
 		var ok = this.createNode('button', { 'class': 'dialog-button', ':context': 'OK' }, buttonWrapper);
 		
 		var that = this;
