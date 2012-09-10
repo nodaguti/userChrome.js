@@ -5,8 +5,9 @@
 // @author      nodaguti
 // @license     MIT License
 // @compatibility Firefox 3.6 - Firefox 15
-// @version     12/09/09 13:20 前回の修正が不十分だった
+// @version     12/09/10 22:30 $third-party実装
 // ==/UserScript==
+// @version     12/09/09 13:20 前回の修正が不十分だった
 // @version     12/09/05 19:00 Bug 788290 - Turn javascript.options.xml.chrome off by default
 // @version     12/09/03 17:00 アスタリスクと前方一致を使ったフィルタが正しくマッチしないことがあるバグを修正
 // @version     12/07/14 12:30 Firefoxが強制終了した後に起動するとobserverの登録がされないバグを修正
@@ -207,12 +208,23 @@ window.adblockSharp = {
 			this[listType] = new FilterList();
 			
 			for(let type in data[listType]){
-				if(type == 'history') continue;
+				if(type === 'history') continue;
 				
 				var typeObj = this[listType]._getTypeObjByName(type);
 				
 				//文字列で保存されているフィルタデータをフィルタオブジェクトにする
-				var _list = data[listType][type].list.map(function(filter){ return typeObj.format(filter); });
+				var _list = data[listType][type].list.map(function(filter){
+					//フィルタとオプションに分ける
+					[filter, options] = this[listType].parseOptions(filter);
+					
+					if(options)
+						return {
+							filter: typeObj.format(filter),
+							option: options
+						};
+					else
+						return typeObj.format(filter);
+				}, this);
 				
 				typeObj.list = _list.concat();
 			}
@@ -436,7 +448,10 @@ FilterList.prototype = {
 				},
 				
 				toString: function(filter){
-					return filter.toString();
+					if(filter.option)
+						return filter.filter.toString() + '$' + filter.option.original;
+					else
+						return filter.toString();
 				},
 			},
 			
@@ -483,7 +498,10 @@ FilterList.prototype = {
 				},
 				
 				toString: function(filter){
-					return '+' + filter.join('*') + '+';
+					if(filter.option)
+						return '+' + filter.filter.join('*') + '+' + '$' + filter.option.original;
+					else
+						return '+' + filter.join('*') + '+';
 				},
 			},
 			
@@ -534,10 +552,18 @@ FilterList.prototype = {
 				},
 				
 				toString: function(filter){
+					var opt = '';
+					
+					if(filter.option){
+						opt = '$' + filter.option.original;
+						filter = filter.filter;
+					}
+					
+					
 					if(typeof filter === 'string'){
-						return '|' + filter;
+						return '|' + filter + opt;
 					}else{
-						return '|' + filter.join('*');
+						return '|' + filter.join('*') + opt;
 					}
 				},
 			},
@@ -590,10 +616,18 @@ FilterList.prototype = {
 				},
 				
 				toString: function(filter){
+					var opt = '';
+					
+					if(filter.option){
+						opt = '$' + filter.option.original;
+						filter = filter.filter;
+					}
+					
+					
 					if(typeof filter === 'string'){
-						return filter + '|';
+						return filter + '|' + opt;
 					}else{
-						return filter.join('*') + '|';
+						return filter.join('*') + '|' + opt;
 					}
 				},
 			},
@@ -622,10 +656,18 @@ FilterList.prototype = {
 				},
 				
 				toString: function(filter){
+					var opt = '';
+					
+					if(filter.option){
+						opt = '$' + filter.option.original;
+						filter = filter.filter;
+					}
+					
+					
 					if(/^\/.*\/$/.test(filter)){
-						return '*' + filter + '*';
+						return '*' + filter + '*' + opt;
 					}else{
-						return filter;
+						return filter + opt;
 					}
 				},
 			},
@@ -729,19 +771,33 @@ FilterList.prototype = {
 	
 	/**
 	 * オプションを解析する
-	 * @param 
+	 * @param {String} filter_
+	 * @return {Array} filter, options(Option Object)
 	 */
-	parseOptions: function(options){
+	parseOptions: function(filter_){
 
+		var optStart = filter_.lastIndexOf('$');
+		
+		//オプションがない場合
+		//正規表現中には$が現れる場合があるので別枠
+		//(フィルタオプションを除外しない状態で正規表現だと判断されれば, その正規表現フィルタにオプションはついていない)
+		if(optStart === -1 || (filter_[0] === '/' && filter_[filter_.length-1] === '/')){
+			return [filter_, null];
+		}
+		
+		
+		var filter = filter_.substr(0, optStart);
+		var options = filter_.substr(optStart + 1);
+		
+		log(optStart, filter, options);
+		
 		//解析して結果を返す
 		var result = {
 			thirdParty: null,  //true: third-party, false: first-party, null: all
 			restrict: [],
-			except: []
+			except: [],
+			original: options
 		};
-		
-		if(!options) return null;
-		
 		
 		//domain, third-partyにのみ対応しているので、
 		//それらを抜き出す
@@ -775,7 +831,7 @@ FilterList.prototype = {
 			
 		});
 		
-		return result;
+		return [filter, result];
 	},
 	
 	
@@ -801,7 +857,6 @@ FilterList.prototype = {
 			protocol: win.location.protocol
 		} : {};
 		
-		log(to.toSource(), from.toSource());
 		
 		return this.types.some(function(typeObj){
 			return typeObj.list.some(function(filter, index){
@@ -843,11 +898,10 @@ FilterList.prototype = {
 	
 	
 	matchOption: function(option, to, from){
-		
 		//third-party check
-		if(typeof option.thirdParty === 'boolean'){
+		if(option.thirdParty !== null){
 			let isThird = !(to.scheme == from.protocol && to.host == from.host);
-			if(! ((option.thirdParty && isThird) || (!option.thirdParty && !isThird)) ) return false;
+			if( (option.thirdParty && !isThird) || (!option.thirdParty && isThird) ) return false;
 		}
 		
 		//domain check
@@ -873,10 +927,7 @@ FilterList.prototype = {
 			var options;
 			
 			//フィルタとオプションに分ける
-			[filter, options] = filter.split("$");
-			
-			//オプションを解析
-			options = this.parseOptions(options);
+			[filter, options] = this.parseOptions(filter);
 		
 			//合致するフィルタの種類を調べて、追加する
 			this.types.some(function(typeObj){
