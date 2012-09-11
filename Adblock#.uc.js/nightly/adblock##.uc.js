@@ -5,8 +5,9 @@
 // @author      nodaguti
 // @license     MIT License
 // @compatibility Firefox 3.6 - Firefox 15
-// @version     12/09/11 11:00 $image実装
+// @version     12/09/11 11:20 $domain実装
 // ==/UserScript==
+// @version     12/09/11 11:00 $image実装
 // @version     12/09/10 22:30 $third-party実装
 // @version     12/09/09 13:20 前回の修正が不十分だった
 // @version     12/09/05 19:00 Bug 788290 - Turn javascript.options.xml.chrome off by default
@@ -821,7 +822,7 @@ FilterList.prototype = {
 				case 'image':
 					result.image = true;
 					
-				case: '~image':
+				case '~image':
 					result.image = false;
 				
 				//domain
@@ -910,7 +911,7 @@ FilterList.prototype = {
 	matchOption: function(option, to, from){
 		
 		//$image
-		if(option.image !== null)
+		if(option.image !== null){
 			if( (option.image && !to.isImage) || (!option.image && to.isImage) ) return false;
 		}
 		
@@ -921,13 +922,29 @@ FilterList.prototype = {
 		}
 		
 		//$domain
-		if(option.except.length){
+		if(option.except.length && this._matchDomains(from.host, option.except))
+			return false;
 			
-			
-			
-		}
+		if(option.restrict.length && !this._matchDomains(from.host, option.restrict))
+			return false;
 		
 		return true;
+	},
+	
+	
+	_matchDomains: function(target, filters){
+		var nextDot;
+		
+		for(;;){
+			if(filters.indexOf(target) !== -1) return true;
+			
+			var nextDot = target.indexOf('.');
+			if(nextDot === -1) break;
+			
+			target = target.substr(nextDot + 1);
+		}
+		
+		return false;
 	},
 	
 	
