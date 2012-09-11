@@ -5,8 +5,9 @@
 // @author      nodaguti
 // @license     MIT License
 // @compatibility Firefox 3.6 - Firefox 15
-// @version     12/09/10 22:30 $third-party実装
+// @version     12/09/11 11:00 $image実装
 // ==/UserScript==
+// @version     12/09/10 22:30 $third-party実装
 // @version     12/09/09 13:20 前回の修正が不十分だった
 // @version     12/09/05 19:00 Bug 788290 - Turn javascript.options.xml.chrome off by default
 // @version     12/09/03 17:00 アスタリスクと前方一致を使ったフィルタが正しくマッチしないことがあるバグを修正
@@ -771,7 +772,7 @@ FilterList.prototype = {
 	
 	/**
 	 * オプションを解析する
-	 * @param {String} filter_
+	 * @param {String} filter_ 生のフィルタ文字列(オプションと分離する前)
 	 * @return {Array} filter, options(Option Object)
 	 */
 	parseOptions: function(filter_){
@@ -789,23 +790,22 @@ FilterList.prototype = {
 		var filter = filter_.substr(0, optStart);
 		var options = filter_.substr(optStart + 1);
 		
-		log(optStart, filter, options);
-		
 		//解析して結果を返す
 		var result = {
+			image: null,  //true: only image, false: not image, null: all
 			thirdParty: null,  //true: third-party, false: first-party, null: all
 			restrict: [],
 			except: [],
 			original: options
 		};
 		
-		//domain, third-partyにのみ対応しているので、
+		//domain, third-party, imageにのみ対応しているので、
 		//それらを抜き出す
 		options = options.split(',').filter(function(item){
-			return item.lastIndexOf('domain', 0) !== -1 || item.indexOf('third-party') !== -1;
+			return /(:?domain|third-party|image)/.test(item);
 		});
 		
-		//ドメイン名 or third-partyにばらす
+		//Option Objectに変換する
 		options.forEach(function(item){
 		
 			switch(item){
@@ -817,7 +817,14 @@ FilterList.prototype = {
 				case '~third-party':
 					result.thirdParty = false;
 					break;
+					
+				case 'image':
+					result.image = true;
+					
+				case: '~image':
+					result.image = false;
 				
+				//domain
 				default:
 					item = item.replace('domain=', '');
 					item.split('|').forEach(function(domain){
@@ -843,10 +850,13 @@ FilterList.prototype = {
 	match: function(http){
 		
 		//接続先の情報
+		//isImage is quoted from urlfilter.uc.js created by Griever
+		//https://github.com/Griever/userChromeJS/blob/master/urlfilter/urlfilter.uc.js
 		var to = {
 			url: http.URI.spec,
 			host: http.URI.host,
-			scheme: http.URI.scheme
+			scheme: http.URI.scheme,
+			isImage: !http.loadGroup || !http.loadGroup.groupObserver
 		};
 		
 		//接続元の情報
@@ -898,13 +908,19 @@ FilterList.prototype = {
 	
 	
 	matchOption: function(option, to, from){
-		//third-party check
+		
+		//$image
+		if(option.image !== null)
+			if( (option.image && !to.isImage) || (!option.image && to.isImage) ) return false;
+		}
+		
+		//$third-party
 		if(option.thirdParty !== null){
 			let isThird = !(to.scheme == from.protocol && to.host == from.host);
 			if( (option.thirdParty && !isThird) || (!option.thirdParty && isThird) ) return false;
 		}
 		
-		//domain check
+		//$domain
 		if(option.except.length){
 			
 			
