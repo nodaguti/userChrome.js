@@ -111,10 +111,6 @@ function check(){
 		var text = req.responseText;
 		
 		if(text.indexOf('<input type=submit name=BUTTON', 3700) > -1){
-			
-			//beep
-			if(PLAY_BEEP) Cc["@mozilla.org/sound;1"].createInstance(Ci.nsISound).beep();
-			
 			//一覧作成
 			var enqNames = text.match(/<div\s+class="tight"><a\s+name="\d+">#\d+<\/a>:\s+.*?<\/div>/g).map(function(item, index){
 				return (index + 1) + ': ' + 
@@ -123,11 +119,11 @@ function check(){
 			});
 			
 			//notify
+			if(PLAY_BEEP) Cc["@mozilla.org/sound;1"].createInstance(Ci.nsISound).beep();
 			if(NOTIFY_ALERT) as.showAlertNotification('', U('コソアンチェッカー'), U('回答可能なアンケ一覧\n\n') + enqNames.join('\n'));
-			
 			if(NOTIFY_LOG) log(('回答可能なアンケ一覧\n\n') + enqNames.join('\n'));
 		}else{
-			log('No Enquete.');
+			//log('No Enquete.');
 		}
 		
 	}
