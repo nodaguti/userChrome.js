@@ -62,9 +62,9 @@ function log(str,old,after){
 	if(!(old || after)){
 		logText += "<div class=\"logItem\"><div class=\"logItemTime\">[" + (new Date()) + "]</div> " + str + '</div>';
 	}else{
-		logText += "<div class=\"logItem\"><div class=\"logItemTime\">[" + (new Date()) + "]</div>" + 
-					'<div class="logtype">'+str+'</div>' + 
-					'<div class="oldfilter">'+old+'</div>' + 
+		logText += "<div class=\"logItem\"><div class=\"logItemTime\">[" + (new Date()) + "]</div>" +
+					'<div class="logtype">'+str+'</div>' +
+					'<div class="oldfilter">'+old+'</div>' +
 					'<div class="newfilter">'+after+'</div>' +
 					'</div>';
 	}
@@ -84,19 +84,19 @@ function $(id){
 
 function convertList(){
 	var startTime = (new Date()).getTime();
-	
+
 	var original = $("originalFilter").value;
-	
+
 	var filtersToConvert = original.split('\n').filter(function(item){ return !(/^[\s\n\r]*$/.test(item)); });
 	var originalType = document.querySelector('input[name="originalType"]:checked').value;
-	
+
 	//設定値の読み込み
 	for(let key in prefs){
 		prefs[key] = $(key).checked;
 	}
-	
+
 	log(originalType + '形式のフィルタを変換します...');
-	
+
 	//変換
 	//  _convertListFrom***（*** = チェックされたラジオボタンのvalue属性）という関数を,
 	//  入力された変換元データを改行で分けた配列を引数にして呼び出す.
@@ -111,18 +111,18 @@ function convertList(){
 
 	//出力
 	var outputStr = '';
-	
+
 	if(prefs.convertIntoOldStyle){
 		//filter: 形式で書き出す
-		outputStr = 
-			'filter: [\n' + 
-			( convertedFilter.map(function(item){ return "'" + item.replace(/\\/g,'\\\\') + "',\n"; }).join('') ) + 
+		outputStr =
+			'filter: [\n' +
+			( convertedFilter.map(function(item){ return "'" + item.replace(/\\/g,'\\\\') + "',\n"; }).join('') ) +
 			"\n],";
 	}else{
 		//標準形式で書き出す
 		outputStr = convertedFilter.join('\n');
 	}
-	
+
 	$('convertedFilter').value = outputStr;
 
 	//CSSの出力
@@ -130,14 +130,14 @@ function convertList(){
 	if(css){
 		var cssStr = '/* *** adblock#.uc.js Element Hiding CSS *** */\n\n';
 		var _plainSelectors = [];
-		
+
 		//ドメイン指定なし
 		cssStr += '/* For all sites */\n'
 		cssStr += css.plain.join(',\n');
 		cssStr += '{\n   display: none !important;\n}\n';
 		_plainSelectors = css.plain.concat();
-		
-		
+
+
 		//除外ドメイン指定あり（除外ドメイン以外向けの記述）
 		cssStr += '\n/* For all sites except for specific domains */\n';
 
@@ -147,61 +147,61 @@ function convertList(){
 				_plainSelectors.push(selector);
 			}
 		}
-		
+
 		cssStr = cssStr.slice(0, -2);
 		cssStr += '{\n display: none !important;\n}\n';
-		
-		
+
+
 		//ドメイン指定あり
 		cssStr += '\n/* For specific domains */\n';
-		
+
 		for(let domain in css.domain){
 			let _cssStr = '';
 			let selectorCounter = 0;
-			
+
 			_cssStr += '@-moz-document domain(' + domain + '){\n';
-		
+
 			css.domain[domain].forEach(function(selector){
 				if(_plainSelectors.indexOf(selector) !== -1) return;
 				_cssStr += '   ' + selector + ',\n';
 				selectorCounter++;
 			});
-			
+
 			//最後のカンマを削除
 			_cssStr = _cssStr.slice(0, -2);
-			
+
 			if(!selectorCounter) continue;
-			
+
 			_cssStr += '{\n      display: none !important;\n   }\n}\n';
-			
+
 			cssStr += _cssStr;
 		}
-		
-		
+
+
 		//除外ドメイン指定あり（除外ドメイン向けの記述）
 		cssStr += '\n/* Don\'t hide elements from following domains */\n';
-		
+
 		for(let selector in css.excludeDomain){
 			cssStr += '@-moz-document ';
-			
+
 			css.excludeDomain[selector].forEach(function(domain){
 				cssStr += 'domain(' + domain + '),';
 			});
-			
+
 			//最後のカンマを削除
 			cssStr = cssStr.slice(0, -1);
-			
+
 			cssStr += '{\n   ' + selector + '{\n      display: block !important;\n   }\n}\n';
 		}
-		
+
 		//出力
 		$('convertedCSS').value = cssStr;
 	}
-	
+
 	//変換時間の表示
 	var endTime = (new Date()).getTime();
 	log(((endTime-startTime)/1000)+" sec.");
-	
+
 	//ログを表示する
 	showLog();
 }
@@ -219,7 +219,7 @@ function _convertListFromAdblock(lists){
 		convertedToRegExp,  //正規表現に変換したかどうか
 		isWhiteList,   //ホワイトリストかどうか
 		filterOpts = '';  //フィルタオプション
-	
+
 	for(var i=0; i<l; i++){
 		list = lists[i];
 		convertedToRegExp = false;
@@ -238,22 +238,22 @@ function _convertListFromAdblock(lists){
 
 		//非表示フィルターをCSSに変換
 		if(list.indexOf('##') !== -1){
-		
+
 			//ドメインの指定と要素の指定に分割する
 			list = list.split('##');
 
 			var selector = list[1];
-			
+
 			if(list[0]){
 				//ドメインの指定がある場合
 				var domains = list[0].split(',');
-				
+
 				for(var j=0, k=domains.length; j<k; j++){
-				
+
 					if(domains[j][0] === '~'){
 						//exclude
 						var domain = domains[j].substring(1);
-						
+
 						if(!css.excludeDomain[selector]) css.excludeDomain[selector] = [];
 						css.excludeDomain[selector].push(domain);
 					}else{
@@ -261,7 +261,7 @@ function _convertListFromAdblock(lists){
 						if(!css.domain[domains[j]]) css.domain[domains[j]] = [];
 						css.domain[domains[j]].push(selector);
 					}
-				
+
 				}
 
 			}else{
@@ -270,29 +270,29 @@ function _convertListFromAdblock(lists){
 
 			continue;
 		}
-		
+
 		//ホワイトリストかどうか
 		if(list.lastIndexOf('@@', 0) !== -1){
 			list = list.substring(2);
 			isWhiteList = true;
 		}
-		
+
 		//正規表現を用いたものはそのまま
 		if(/^\/.*\/$/.test(list)){
 			_pushConvertedList(list);
 			continue;
 		}
-		
+
 		original = list;
 
 		//フォルタオプション
 		if(/\$[^$]+$/.test(list)){
 			tmp = list;
-			
+
 			var optStart = list.lastIndexOf('$');
 			var filter = list.substr(0, optStart);
 			var options = list.substr(optStart + 1);
-			
+
 			if(! (prefs.enableDomain || prefs.enableImage || prefs.enableThirdParty) ){
 				list = filter;
 			}else{
@@ -300,25 +300,25 @@ function _convertListFromAdblock(lists){
 				if(prefs.enableDomain) enabledOptions.push('domain');
 				if(prefs.enableImage) enabledOptions.push('image');
 				if(prefs.enableThirdParty) enabledOptions.push('third-party');
-				
+
 				var optRegExp = new RegExp('(:?' + enabledOptions.join('|') + ')');
-				
+
 				//domain, third-party, imageにのみ対応しているので、
 				//それらを抜き出す
 				options = options.split(',').filter(function(item){
 					return optRegExp.test(item);
 				});
-				
+
 				list = filter;
 				if(options.length) filterOpts = '$' + options.join(',');
-				
+
 				//正規表現の時はそのまま追加する
 				if(list[0] === '/' && list[list.length-1] === '/'){
 					_pushConvertedList(list);
 					continue;
 				}
 			}
-			
+
 			if(!prefs.suppressLogs) log("フィルタオプションを削除しました", tmp, list + filterOpts);
 		}
 
@@ -329,10 +329,10 @@ function _convertListFromAdblock(lists){
 		if(m = list.match(/^\/(.*)\/\*$/)){
 			list = "*/" + m[1] + "/*";
 		}
-		
+
 		//「||」(the beginning of the domain name)
 		if(list.lastIndexOf('||', 0) !== -1){
-		
+
 			if(prefs.twoPipeToRegExp){
 				//正規表現に変換
 				tmp = list.substring(2);
@@ -349,7 +349,7 @@ function _convertListFromAdblock(lists){
 		//「^」(separator character)
 		if( (convertedToRegExp && tmp.indexOf('^') !== -1 ) ||
 			 list.indexOf('^') !== -1){
-		
+
 			if(convertedToRegExp){
 				if(prefs.separatorCharacterToRegExp){
 					list = list.replace(/\\\^/g, '[\\/:\\?=&]');
@@ -367,7 +367,7 @@ function _convertListFromAdblock(lists){
 				}
 			}
 		}
-		
+
 		//正規表現に変換したフィルタを追加する
 		if(convertedToRegExp){
 			_pushConvertedList(list);
@@ -382,15 +382,15 @@ function _convertListFromAdblock(lists){
 		if(/[^\/]\*$/.test(list)){
 			list = list.slice(0, -1);
 		}
-		
+
 		//連続する*を一つにする
 		list = list.replace(/\*+/g, '*');
-		
+
 		//*しか無いフィルタは削除する
 		if(/^\**$/.test(list)){
 			continue;
 		}
-		
+
 		//*が途中にある場合
 		tmp = list.slice(1, -1);
 		if(prefs.addPlusToStarFilter && tmp.indexOf('*') !== -1){
@@ -401,16 +401,16 @@ function _convertListFromAdblock(lists){
 		if(prefs.suppressLogs && original != list){
 			log('フィルター変更', original, list + filterOpts);
 		}
-	
+
 		//listには変換済みのフィルタが入っているはず
 		_pushConvertedList(list);
 	}
-	
+
 	function _pushConvertedList(_list){
 		if(isWhiteList) _list = '@@' + _list;
 		convertedFilter.push(_list + filterOpts);
 	}
-	
+
 	return [convertedFilter, css];
 }
 
@@ -484,9 +484,9 @@ function _convertListFromAdblock2(lists){
 		if (typeof hasSubContent.regExp === "undefined") {
 			subcontents = ["$script","$stylesheet","$object","$subdocument","$xmlhttprequest",
 				"$link","$other","$refresh","$media","$ping","$dtd","$font","$subrequest","$xbl"];
-				
+
 			if(prefs.enableImage) subcontents.push('$image');
-			
+
 			hasSubContent.regExp = new RegExp("(\\" + subcontents.join("|\\") + ")$", "i");
 		}
 		if (hasSubContent.regExp.test(filter)) {
@@ -494,7 +494,7 @@ function _convertListFromAdblock2(lists){
 			return true;
 		}
 	}
-	
+
 	return [convertData(), null];
 }
 
@@ -560,6 +560,7 @@ CSS<br />
 
 <input type="button" value="変換" onclick="convertList();" /><br /><br />
 
+テストss!<br />
 変換ログ<br />
 <div id="log"></div>
 </body>

@@ -4,8 +4,8 @@
 // @include     main
 // @author      nodaguti
 // @license     MIT License
-// @compatibility Firefox 3.6 - Firefox 15
-// @version     12/09/03 17:30 adblock#_lite.uc.js
+// @compatibility Firefox 3.6 - Firefox 19
+// @version     13/02/23 12:00 Firefox 21 で動かない問題を修正
 // @note        adblock#_lite.uc.js は, 09/09/15 19:30 に以下の更新相当の変更を加え,
 //              さらに最新版の adblock#.uc.js の高速化方法を導入したものです.
 //                 11/01/30 07:30 Bug 623435 - Rip out deprecated |RegExp.compile| builtin method
@@ -15,6 +15,7 @@
 //                 10/05/21 21:30 正規表現フィルタのマッチ処理を高速化
 //                 10/05/21 20:30 マッチング処理を15%程度高速化
 // ==/UserScript==
+// @version     12/09/03 17:30 adblock#_lite.uc.js
 // @version     09/09/15 19:30 typo
 // @version     09/09/14 18:00 ちょこっと高速化
 // @version     09/09/09 20:00 前方一致/後方一致フィルタに対応
@@ -25,8 +26,6 @@
 // @version     09/08/30 22:00 /ads/(ADBでは*/ads/*)のようなフィルターが正規表現と解釈されていたのを修正
 // @version     09/08/30 19:00 正規表現/アスタリスクを使ったフィルターに対応
 // @version     09/08/29 6:00 単純文字列/アスタリスク使用フィルターに対応(正規表現/?/()を使ったものには未対応)
-
-
 
 var adblockSharp = {
 
@@ -44,23 +43,19 @@ var adblockSharp = {
 	filter: [
 	],
 
-
 	blackList: {},
 
 	whiteList: {},
 
-
 	enabled: true,
-
 
 	init: function(){
 
 		var black = [], white = [];
 
-
 		//ON,OFFメニュー作成
 		var menuPopup = document.getElementById("menu_ToolsPopup");
-		var separator = document.getElementById("sanitizeSeparator");
+		var separator = document.getElementById("devToolsSeparator");
 		var menuitem = document.createElement("menuitem");
 		menuitem.setAttribute("label", "Enable Adblock#.uc.js");
 		menuitem.setAttribute("type", "radio");
@@ -68,7 +63,6 @@ var adblockSharp = {
 		menuitem.setAttribute("id", "adblocksharp-tool-menu-enabled");
 		menuitem.addEventListener("command", adblockSharp.toggleEnabled, false);
 		menuPopup.insertBefore(menuitem, separator);
-
 
 		//フィルタの仕分け
 		var $;
@@ -82,7 +76,7 @@ var adblockSharp = {
 		this.whiteList = this.sortFilters(white);
 
 		this.observer.start();
-		
+
 		window.addEventListener('unload', this.uninit, false);
 	},
 
@@ -90,7 +84,7 @@ var adblockSharp = {
 		window.removeEventListener('unload', adblockSharp.uninit, false);
 		adblockSharp.observer.stop();
 	},
-	
+
 	/**
 	 * adblock#.uc.jsの有効/無効を切り替える
 	 */
@@ -110,7 +104,6 @@ var adblockSharp = {
 			}
 		}
 	},
-
 
 	sortFilters: function(list){
 		var filterObject = {
@@ -177,7 +170,6 @@ var adblockSharp = {
 		return filterObject;
 	},
 
-
 	matchesAny: function(url, filterset){
 
 		//単純な文字列のフィルターにマッチするかどうか : 高速
@@ -193,11 +185,11 @@ var adblockSharp = {
 		if(filterset.starFilter.length !== 0){
 			for(let j=0, l=filterset.starFilter.length; j<l; j++){
 				var lastMatch = 0, match = -1;
-				
+
 				for(let i=0, h=filterset.starFilter[j].length; i<h; i++){
-					
+
 					match = url.indexOf(filterset.starFilter[j][i], lastMatch);
-					
+
 					if(match !== -1)
 						lastMatch = match + filterset.starFilter[j][i].length + 1;
 					else break;
@@ -213,9 +205,9 @@ var adblockSharp = {
 		if(filterset.prefixSuffixFilter.length !== 0){
 			for(let i=0, l=filterset.prefixSuffixFilter.length; i<l; i++){
 				var fs = filterset.prefixSuffixFilter[i][1];
-				
+
 				switch(filterset.prefixSuffixFilter[i][0]){
-					
+
 					//前方一致 - 単純文字列
 					case 1:
 						if(url.lastIndexOf(fs, 0) !== -1) return true;
@@ -227,18 +219,18 @@ var adblockSharp = {
 
 						//先頭
 						if(url.lastIndexOf(fs[0], 0) === -1) break;
-						
+
 						//2番目以降
 						for(let j=1, h=fs.length; j<h; j++){
 							match = url.indexOf(fs[j], lastMatch);
-							
+
 							if(match !== -1)
 								lastMatch = match + fs[j].length + 1;
 							else break;
 						}
-		
+
 						if(j===h) return true;
-						
+
 						break;
 
 					//後方一致 - 単純文字列
@@ -248,11 +240,11 @@ var adblockSharp = {
 
 					//後方一致 - アスタリスク
 					case 4:
-					
+
 						//一番後ろ
 						var lastChild = fs[fs.length-1];
 						if(url.indexOf(lastChild, url.length - lastChild.length) === -1) break;
-					
+
 						//それ以外
 						var lastMatch = 0, match = -1;
 
@@ -262,7 +254,7 @@ var adblockSharp = {
 							if(match !== -1) lastMatch = match + fs[j].length + 1;
 							else break;
 						}
-						
+
 						if(j===h) return true;
 
 						break;
@@ -284,31 +276,29 @@ var adblockSharp = {
 
 };
 
-
 adblockSharp.observer = {
-	
+
 	_observer: null,
-	
+
 	/**
 	 * observerを登録する
 	 */
 	start: function(){
 		var enumerator = Cc["@mozilla.org/appshell/window-mediator;1"].getService(Ci.nsIWindowMediator)
 								.getEnumerator('navigator:browser');
-		
+
 		//すでにスタートしていたら何もしない
 		while(enumerator.hasMoreElements()){
 			var win = enumerator.getNext();
 			if(win.adblockSharp && win.adblockSharp.observer._observer) return;
 		}
-		
+
 		//どのウィンドウでもobserverが登録されていないときは登録処理を行う
 		this._observer = Cc['@mozilla.org/observer-service;1'].getService(Ci.nsIObserverService);
 		this._observer.addObserver(this, 'http-on-modify-request', false);
 		Application.console.log('Observer started.');
 	},
 
-	
 	/**
 	 * observerをストップする
 	 * その際他のウィンドウがあるならそこにobserverを委託する
@@ -327,7 +317,7 @@ adblockSharp.observer = {
 			this._observer.removeObserver(this, 'http-on-modify-request');
 			this._observer = null;
 			Application.console.log('Observer removed.');
-	
+
 			//もし他のウィンドウがあるなら, そのウィンドウにobserverを委託する
 			if(!isLastWindow && mainWindow && mainWindow.adblockSharp){
 				mainWindow.adblockSharp.observer.start();
@@ -342,7 +332,7 @@ adblockSharp.observer = {
 		http = http.QueryInterface(Components.interfaces.nsIRequest);
 
 		var url = http.URI.spec;
-		
+
 		if( !adblockSharp.matchesAny(url, adblockSharp.whiteList) && 
 			adblockSharp.matchesAny(url, adblockSharp.blackList)){
 			http.cancel(Components.results.NS_ERROR_FAILURE);
@@ -350,6 +340,5 @@ adblockSharp.observer = {
 		}
 	}
 };
-
 
 adblockSharp.init();
