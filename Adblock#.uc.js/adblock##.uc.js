@@ -4,9 +4,10 @@
 // @include     main
 // @author      nodaguti
 // @license     MIT License
-// @compatibility Firefox 3.6 - Firefox 19
-// @version     13/02/23 12:00 Firefox 21 で動かない問題を修正
+// @compatibility Firefox 3.6 - Firefox 22
+// @version     13/06/28 11:00 正規表現フィルタが正しく動作しなかったバグを修正
 // ==/UserScript==
+// @version     13/02/23 12:00 Firefox 21 で動かない問題を修正
 // @version     12/09/11 11:20 $domain実装
 // @version     12/09/11 11:00 $image実装
 // @version     12/09/10 22:30 $third-party実装
@@ -435,7 +436,7 @@ FilterList.prototype = {
 				},
 
 				format: function(filter){
-					return new RegExp(filter.slice(1, -1), getPref('regexp-frags'));
+					return new RegExp(filter.slice(1, -1), getPref('regexp-flags'));
 				},
 
 				match: function(filter, url){

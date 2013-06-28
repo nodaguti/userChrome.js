@@ -4,9 +4,10 @@
 // @include     main
 // @author      nodaguti
 // @license     MIT License
-// @compatibility Firefox 3.6 - Firefox 19
-// @version     13/02/23 12:00 Firefox 21 で動かない問題を修正
+// @compatibility Firefox 3.6 - Firefox 22
+// @version     13/06/28 11:00 正規表現フィルタが正しく動作しなかったバグを修正
 // ==/UserScript==
+// @version     13/02/23 12:00 Firefox 21 で動かない問題を修正
 // @version     12/09/09 13:20 前回の修正が不十分だった
 // @version     12/09/05 19:00 Bug 788290 - Turn javascript.options.xml.chrome off by default
 // @version     12/09/03 17:00 アスタリスクと前方一致を使ったフィルタが正しくマッチしないことがあるバグを修正
@@ -420,7 +421,7 @@ filterList.prototype = {
 				},
 
 				format: function(filter){
-					return new RegExp(filter.slice(1, -1), getPref('regexp-frags'));
+					return new RegExp(filter.slice(1, -1), getPref('regexp-flags'));
 				},
 
 				match: function(url){
