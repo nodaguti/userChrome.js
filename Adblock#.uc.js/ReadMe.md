@@ -1,6 +1,8 @@
 adblock#.uc.js
 ==============
-   
+
+## 注意
+adblock#.uc.js はもはや速くなく, むしろ本家より遅いとの報告が相次いでいます. 速さを求める方は, adblock#_lite.uc.js もしくは Adblock Edge 等をご利用ください.
 
 ## 概要
 

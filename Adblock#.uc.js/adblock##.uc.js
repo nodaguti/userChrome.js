@@ -444,6 +444,10 @@ FilterList.prototype = {
 				},
 
 				toString: function(filter){
+					if(!filter){
+						return '';
+					}
+
 					if(filter.option)
 						return filter.filter.toString() + '$' + filter.option.original;
 					else
@@ -494,6 +498,10 @@ FilterList.prototype = {
 				},
 
 				toString: function(filter){
+					if(!filter){
+						return '';
+					}
+
 					if(filter.option)
 						return '+' + filter.filter.join('*') + '+' + '$' + filter.option.original;
 					else
@@ -549,6 +557,10 @@ FilterList.prototype = {
 
 				toString: function(filter){
 					var opt = '';
+
+					if(!filter){
+						return '';
+					}
 
 					if(filter.option){
 						opt = '$' + filter.option.original;
@@ -613,6 +625,10 @@ FilterList.prototype = {
 				toString: function(filter){
 					var opt = '';
 
+					if(!filter){
+						return '';
+					}
+
 					if(filter.option){
 						opt = '$' + filter.option.original;
 						filter = filter.filter;
@@ -651,6 +667,10 @@ FilterList.prototype = {
 
 				toString: function(filter){
 					var opt = '';
+
+					if(!filter){
+						return '';
+					}
 
 					if(filter.option){
 						opt = '$' + filter.option.original;
